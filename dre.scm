@@ -201,15 +201,21 @@
 ;;; http://matt.might.net/articles/parsing-regex-with-recursive-descent/
 
 ;; <regex> ::= <term> '|' <regex>
-;;           |  <term>
+;;           | <term>
 ;;
 ;; <term> ::= { <factor> }
 ;;
 ;; <factor> ::= <base> { '*' }
 ;;
 ;; <base> ::= <char>
-;;          |  '\' <char>
-;;          |  '(' <regex> ')'
+;;          | '(' <regex> ')'
+;;          | '[' <set> ']'
+;;
+;; <set> ::= { <char> }
+;;         | '^' { <char> }
+;;
+;; <char> ::= <character>
+;;          | '\' <character>
 
 (define (string->dre str)
   (let ((cur 0))
@@ -226,45 +232,80 @@
 
     (define (regex)
       (let ((trm (term)))
-        (if (and (more) (char=? (peek) #\|))
-            (begin (eat #\|)
-                   (dre-or trm (regex)))
-            trm)
-        ))
+        (cond
+         ((and (more) (char=? (peek) #\|))
+          (eat #\|)
+          (dre-or trm (regex)))
+         (#t trm)
+         )))
 
     (define (term)
       (let loop ((fact dre-empty))
-        (if (and (more)
-                 (and (not (char=? (peek) #\)))
-                      (not (char=? (peek) #\|))))
-            (loop (dre-concat fact (factor)))
-            fact)))
+        (cond
+         ((and (more) (and (not (char=? (peek) #\)))
+                           (not (char=? (peek) #\|))))
+          (loop (dre-concat fact (factor))))
+         (#t fact)
+         )))
 
     (define (factor)
       (let loop ((b (base)))
-        (if (and (more)
-                 (char=? (peek) #\*))
-            (begin (eat #\*)
-                   (loop (dre-closure b)))
-            b)))
+        (cond
+         ((and (more) (char=? (peek) #\*))
+          (eat #\*)
+          (loop (dre-closure b)))
+         (#t b)
+         )))
 
     (define (base)
       (cond
        ((char=? (peek) #\()
+        ;; parenthesized sub-pattern
         (eat #\()
         (let ((r (regex)))
           (eat #\))
           r))
-       ((char=? (peek) #\\)
-        (eat #\\)
-        (dre-chars (list (next))))
+       ((char=? (peek) #\[)
+        ;; character set
+        (eat #\[)
+        (let ((s (set)))
+          (eat #\])
+          s))
        (#t
-        (dre-chars (list (next))))
+        ;; single character
+        (dre-chars (list (char))))
+       ))
+
+    (define (set)
+      (cond
+       ((char=? (peek) #\^)
+        ;; negated set
+        (eat #\^)
+        (dre-chars-neg (chars)))
+       (#t
+        ;; positive set
+        (dre-chars (chars)))
+       ))
+
+    (define (chars)
+      (let loop ((ch '()))
+        (if (char=? (peek) #\])
+            ch
+            (loop (cons (char) ch)))))
+
+    (define (char)
+      (cond
+       ((char=? (peek) #\\)
+        ;; quoted character
+        (eat #\\)
+        (next))
+       (#t
+        ;; unquoted character
+        (next))
        ))
 
     (let ((r (regex)))
-      (if (not (more))
-          r
+      (if (more)
           (error "incomplete regular expression:" (substring str cur))
-          ))
+          r))
     ))
