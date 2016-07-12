@@ -277,6 +277,10 @@
         (let ([s (set)])
           (eat #\])
           s)]
+       [(char=? (peek) #\.)
+        ;; any character
+        (eat #\.)
+        (dre-chars-neg '(#\newline))]
        [else
         ;; single character
         (dre-chars (list (char)))]
