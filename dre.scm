@@ -92,8 +92,14 @@
 
 ;; These constructors enforce canonical forms as per Section 4.1 of re-deriv.
 
-(define (dre-chars chars) (dre-chars-raw #t chars))
-(define (dre-chars-neg chars) (dre-chars-raw #f chars))
+(define (dre-chars chars)
+  (cond
+   ((null? chars) dre-null)
+   (#t (dre-chars-raw #t chars))
+   ))
+
+(define (dre-chars-neg chars)
+  (dre-chars-raw #f chars))
 
 (define (dre-concat left right)
   (cond
