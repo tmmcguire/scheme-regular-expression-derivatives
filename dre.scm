@@ -59,31 +59,31 @@
 
 (define (dre-equal? left right)
   (cond
-   ((not (dre? left))  #f)
-   ((not (dre? right)) #f)
-   ((and (dre-and? left) (dre-and? right))
-    (let ((l1 (dre-and-left left))
-          (l2 (dre-and-right left))
-          (r1 (dre-and-left right))
-          (r2 (dre-and-right right)))
+   [(not (dre? left))  #f]
+   [(not (dre? right)) #f]
+   [(and (dre-and? left) (dre-and? right))
+    (let ([l1 (dre-and-left left)]
+          [l2 (dre-and-right left)]
+          [r1 (dre-and-left right)]
+          [r2 (dre-and-right right)])
       (or (and (dre-equal? l1 r1)
                (dre-equal? l2 r2))
           (and (dre-equal? l1 r2)
-               (dre-equal? l2 r1)))))
-   ((and (dre-or? left) (dre-or? right))
-    (let ((l1 (dre-or-left left))
-          (l2 (dre-or-right left))
-          (r1 (dre-or-left right))
-          (r2 (dre-or-right right)))
+               (dre-equal? l2 r1))))]
+   [(and (dre-or? left) (dre-or? right))
+    (let ([l1 (dre-or-left left)]
+          [l2 (dre-or-right left)]
+          [r1 (dre-or-left right)]
+          [r2 (dre-or-right right)])
       (or (and (dre-equal? l1 r1)
                (dre-equal? l2 r2))
           (and (dre-equal? l1 r2)
-               (dre-equal? l2 r1)))))
-   (#t (equal? left right))
+               (dre-equal? l2 r1))))]
+   [else (equal? left right)]
    ))
 
 (define (dre-chars-member? re ch)
-  (let ((is-member (member ch (dre-chars-set re))))
+  (let ([is-member (member ch (dre-chars-set re))])
     (if (dre-chars-pos? re) is-member (not is-member)) ))
 
 (define dre-null (dre-null-raw))
@@ -94,8 +94,8 @@
 
 (define (dre-chars chars)
   (cond
-   ((null? chars) dre-null)
-   (#t (dre-chars-raw #t chars))
+   [(null? chars) dre-null]
+   [else          (dre-chars-raw #t chars)]
    ))
 
 (define (dre-chars-neg chars)
@@ -103,55 +103,55 @@
 
 (define (dre-concat left right)
   (cond
-   ((not (dre? left))  (error "not a regular expression: " left))
-   ((not (dre? right)) (error "not a regular expression: " right))
-   ((dre-null? left)   left)
-   ((dre-null? right)  right)
-   ((dre-empty? left)  right)
-   ((dre-empty? right) left)
-   ((dre-concat? left) (dre-concat-raw (dre-concat-left left)
+   [(not (dre? left))  (error "not a regular expression: " left)]
+   [(not (dre? right)) (error "not a regular expression: " right)]
+   [(dre-null? left)   left]
+   [(dre-null? right)  right]
+   [(dre-empty? left)  right]
+   [(dre-empty? right) left]
+   [(dre-concat? left) (dre-concat-raw (dre-concat-left left)
                                        (dre-concat-raw (dre-concat-right left)
-                                                       right)))
-   (#t                 (dre-concat-raw left right))
+                                                       right))]
+   [else               (dre-concat-raw left right)]
    ))
 
 (define (dre-or left right)
   (cond
-   ((not (dre? left))       (error "not a regular expression: " left))
-   ((not (dre? right))      (error "not a regular expression: " right))
-   ((dre-null? left)        right)
-   ((dre-null? right)       left)
-   ((dre-equal? left right) left)
-   ((and (dre-negation? left)
-         (dre-null? (dre-negation-regex left))) left)
-   ((dre-or? left)          (dre-or-raw (dre-or-left left)
+   [(not (dre? left))       (error "not a regular expression: " left)]
+   [(not (dre? right))      (error "not a regular expression: " right)]
+   [(dre-null? left)        right]
+   [(dre-null? right)       left]
+   [(dre-equal? left right) left]
+   [(and (dre-negation? left)
+         (dre-null? (dre-negation-regex left))) left]
+   [(dre-or? left)          (dre-or-raw (dre-or-left left)
                                         (dre-and-raw (dre-and-right left)
-                                                     right)))
-   (#t (dre-or-raw left     right))
+                                                     right))]
+   [else (dre-or-raw left   right)]
    ))
 
 (define (dre-closure regex)
   (cond
-   ((not (dre? regex))   (error "not a regular expression: " regex))
-   ((dre-null? regex)    dre-empty)
-   ((dre-empty? regex)   dre-empty)
-   ((dre-closure? regex) regex)
-   (#t (dre-closure-raw  regex))
+   [(not (dre? regex))    (error "not a regular expression: " regex)]
+   [(dre-null? regex)     dre-empty]
+   [(dre-empty? regex)    dre-empty]
+   [(dre-closure? regex)  regex]
+   [else (dre-closure-raw regex)]
    ))
 
 (define (dre-and left right)
   (cond
-   ((not (dre? left))       (error "not a regular expression: " left))
-   ((not (dre? right))      (error "not a regular expression: " right))
-   ((dre-null? left)        left)
-   ((dre-null? right)       right)
-   ((dre-equal? left right) left)
-   ((dre-and? left)         (dre-and-raw (dre-and-left left)
+   [(not (dre? left))       (error "not a regular expression: " left)]
+   [(not (dre? right))      (error "not a regular expression: " right)]
+   [(dre-null? left)        left]
+   [(dre-null? right)       right]
+   [(dre-equal? left right) left]
+   [(dre-and? left)         (dre-and-raw (dre-and-left left)
                                          (dre-and-raw (dre-and-right left)
-                                                      right)))
-   ((and (dre-negation? left)
-         (dre-null? (dre-negation-regex left))) right)
-   (#t                      (dre-and-raw left right))
+                                                      right))]
+   [(and (dre-negation? left)
+         (dre-null? (dre-negation-regex left))) right]
+   [else                    (dre-and-raw left right)]
    ))
 
 (define (dre-negation regex)
@@ -162,44 +162,44 @@
 
 (define (nu re)
   (cond
-   ((not (dre? re))    (error "not a regular expression: " re))
-   ((dre-empty? re)    dre-empty)
-   ((dre-chars? re)    dre-null)
-   ((dre-null? re)     dre-null)
-   ((dre-concat? re)   (dre-and (nu (dre-concat-left re))
-                                (nu (dre-concat-right re))))
-   ((dre-or? re)       (dre-or (nu (dre-or-left re))
-                               (nu (dre-or-right re))))
-   ((dre-closure? re)  dre-empty)
-   ((dre-and? re)      (dre-and (nu (dre-and-left re))
-                                (nu (dre-and-right re))))
-   ((dre-negation? re) (if (dre-equal? (nu (dre-negation-regex re)) dre-null)
+   [(not (dre? re))    (error "not a regular expression: " re)]
+   [(dre-empty? re)    dre-empty]
+   [(dre-chars? re)    dre-null]
+   [(dre-null? re)     dre-null]
+   [(dre-concat? re)   (dre-and (nu (dre-concat-left re))
+                                (nu (dre-concat-right re)))]
+   [(dre-or? re)       (dre-or (nu (dre-or-left re))
+                               (nu (dre-or-right re)))]
+   [(dre-closure? re)  dre-empty]
+   [(dre-and? re)      (dre-and (nu (dre-and-left re))
+                                (nu (dre-and-right re)))]
+   [(dre-negation? re) (if (dre-equal? (nu (dre-negation-regex re)) dre-null)
                            dre-empty
-                           dre-null))
+                           dre-null)]
    ))
 
 (define (delta re ch)
   (cond
-   ((not (dre? re))    (error "not a regular expression: " re))
-   ((dre-empty? re)    dre-null)
-   ((dre-null? re)     dre-null)
-   ((dre-chars? re)    (if (dre-chars-member? re ch) dre-empty dre-null))
-   ((dre-concat? re)   (dre-or (dre-concat (delta (dre-concat-left re) ch)
+   [(not (dre? re))    (error "not a regular expression: " re)]
+   [(dre-empty? re)    dre-null]
+   [(dre-null? re)     dre-null]
+   [(dre-chars? re)    (if (dre-chars-member? re ch) dre-empty dre-null)]
+   [(dre-concat? re)   (dre-or (dre-concat (delta (dre-concat-left re) ch)
                                            (dre-concat-right re))
                                (dre-concat (nu (dre-concat-left re))
-                                           (delta (dre-concat-right re) ch))))
-   ((dre-closure? re)  (dre-concat (delta (dre-closure-regex re) ch) re))
-   ((dre-or? re)       (dre-or (delta (dre-or-left re) ch)
-                               (delta (dre-or-right re) ch)))
-   ((dre-and? re)      (dre-and (delta (dre-and-left re) ch)
-                                (delta (dre-and-right re) ch)))
-   ((dre-negation? re) (dre-negation (delta (dre-negation-regex re) ch)))
+                                           (delta (dre-concat-right re) ch)))]
+   [(dre-closure? re)  (dre-concat (delta (dre-closure-regex re) ch) re)]
+   [(dre-or? re)       (dre-or (delta (dre-or-left re) ch)
+                               (delta (dre-or-right re) ch))]
+   [(dre-and? re)      (dre-and (delta (dre-and-left re) ch)
+                                (delta (dre-and-right re) ch))]
+   [(dre-negation? re) (dre-negation (delta (dre-negation-regex re) ch))]
    ))
 
 (define (dre-match-list? re list)
   (cond
-   ((null? list) (dre-empty? (nu re)))
-   (#t           (dre-match-list? (delta re (car list)) (cdr list)))
+   [(null? list) (dre-empty? (nu re))]
+   [else         (dre-match-list? (delta re (car list)) (cdr list))]
    ))
 
 (define (dre-match? re str) (dre-match-list? re (string->list str)))
@@ -224,7 +224,7 @@
 ;;          | '\' <character>
 
 (define (string->dre str)
-  (let ((cur 0))
+  (let ([cur 0])
 
     (define (peek)
       (if (more) (string-ref str cur) (error "unexpected end of string")))
@@ -232,85 +232,85 @@
       (if (char=? ch (peek)) (set! cur (+ cur 1))
           (error "unexpected character:" ch (peek))))
     (define (next)
-      (let ((ch (peek))) (eat ch) ch))
+      (let ([ch (peek)]) (eat ch) ch))
     (define (more)
       (< cur (string-length str)))
 
     (define (regex)
-      (let ((trm (term)))
+      (let ([trm (term)])
         (cond
-         ((and (more) (char=? (peek) #\|))
+         [(and (more) (char=? (peek) #\|))
           (eat #\|)
-          (dre-or trm (regex)))
-         (#t trm)
+          (dre-or trm (regex))]
+         [else trm]
          )))
 
     (define (term)
-      (let loop ((fact dre-empty))
+      (let loop ([fact dre-empty])
         (cond
-         ((and (more) (and (not (char=? (peek) #\)))
+         [(and (more) (and (not (char=? (peek) #\)))
                            (not (char=? (peek) #\|))))
-          (loop (dre-concat fact (factor))))
-         (#t fact)
+          (loop (dre-concat fact (factor)))]
+         [else fact]
          )))
 
     (define (factor)
-      (let loop ((b (base)))
+      (let loop ([b (base)])
         (cond
-         ((and (more) (char=? (peek) #\*))
+         [(and (more) (char=? (peek) #\*))
           (eat #\*)
-          (loop (dre-closure b)))
-         (#t b)
+          (loop (dre-closure b))]
+         [else b]
          )))
 
     (define (base)
       (cond
-       ((char=? (peek) #\()
+       [(char=? (peek) #\()
         ;; parenthesized sub-pattern
         (eat #\()
-        (let ((r (regex)))
+        (let ([r (regex)])
           (eat #\))
-          r))
-       ((char=? (peek) #\[)
+          r)]
+       [(char=? (peek) #\[)
         ;; character set
         (eat #\[)
-        (let ((s (set)))
+        (let ([s (set)])
           (eat #\])
-          s))
-       (#t
+          s)]
+       [else
         ;; single character
-        (dre-chars (list (char))))
+        (dre-chars (list (char)))]
        ))
 
     (define (set)
       (cond
-       ((char=? (peek) #\^)
+       [(char=? (peek) #\^)
         ;; negated set
         (eat #\^)
-        (dre-chars-neg (chars)))
-       (#t
+        (dre-chars-neg (chars))]
+       [else
         ;; positive set
-        (dre-chars (chars)))
+        (dre-chars (chars))]
        ))
 
     (define (chars)
-      (let loop ((ch '()))
+      (let loop ([ch '()])
         (if (char=? (peek) #\])
             ch
             (loop (cons (char) ch)))))
 
     (define (char)
       (cond
-       ((char=? (peek) #\\)
+       [(char=? (peek) #\\)
         ;; quoted character
         (eat #\\)
-        (next))
-       (#t
+        (next)]
+       [else
         ;; unquoted character
-        (next))
+        (next)]
        ))
 
-    (let ((r (regex)))
+    (let ([r (regex)])
       (if (more)
           (error "incomplete regular expression:" (substring str cur))
           r))
