@@ -9,6 +9,42 @@
 
 (use-modules (srfi srfi-9))
 
+;; ---------------------------
+
+(define-record-type set-t               ; A set structure
+  (set-raw elts) set?
+  (elts set-elts))
+
+(define (set . elts)
+  (set-raw elts))
+
+(define (list->set lst)
+  (set-raw lst))
+
+(define (set-union s1 s2)
+  (cond
+   [(not (set? s1)) (error "not a set:" s1)]
+   [(not (set? s2)) (error "not a set:" s2)]
+   [else (set-raw (append (set-elts s1) (set-elts s2)))]
+   ))
+
+(define (set-intersection s1 s2)
+  (cond
+   [(not (set? s1)) (error "not a set:" s1)]
+   [(not (set? s2)) (error "not a set:" s2)]
+   [else (let* ([e1 (set-elts s1)]
+                [e2 (set-elts s2)]
+                [intersection (filter (lambda (elt) (member elt e1)) e2)])
+           (set-raw intersection))]
+   ))
+
+(define (set-member? set elt)
+  (if (set? set)
+      (member elt (set-elts set))
+      (error "not a set:" set)))
+
+;; ---------------------------
+
 (define-record-type dre-null-t          ; The empty language; the null set
   (dre-null-raw) dre-null?)
 
@@ -83,7 +119,7 @@
    ))
 
 (define (dre-chars-member? re ch)
-  (let ([is-member (member ch (dre-chars-set re))])
+  (let ([is-member (set-member? (dre-chars-set re) ch)])
     (if (dre-chars-pos? re) is-member (not is-member)) ))
 
 (define dre-null (dre-null-raw))
@@ -95,11 +131,11 @@
 (define (dre-chars chars)
   (cond
    [(null? chars) dre-null]
-   [else          (dre-chars-raw #t chars)]
+   [else          (dre-chars-raw #t (list->set chars))]
    ))
 
 (define (dre-chars-neg chars)
-  (dre-chars-raw #f chars))
+  (dre-chars-raw #f (list->set chars)))
 
 (define (dre-concat left right)
   ;; (r ∙ s) ∙ t => r ∙ (s ∙ t)
@@ -338,3 +374,10 @@
           (error "incomplete regular expression:" (substring str cur))
           r))
     ))
+
+;;; Section 4.2 Computing character set derivative classes
+
+(define (C re)
+  (cond
+   [(dre-empty? re) (cons (dre-chars-neg '()) '())]
+   ))
