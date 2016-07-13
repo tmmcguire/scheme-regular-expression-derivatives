@@ -102,6 +102,11 @@
   (dre-chars-raw #f chars))
 
 (define (dre-concat left right)
+  ;; (r ∙ s) ∙ t => r ∙ (s ∙ t)
+  ;; ∅ ∙ r       => ∅
+  ;; r ∙ ∅       => ∅
+  ;; ϵ ∙ r       => r
+  ;; r ∙ ϵ       => r
   (cond
    [(not (dre? left))  (error "not a regular expression: " left)]
    [(not (dre? right)) (error "not a regular expression: " right)]
@@ -116,6 +121,11 @@
    ))
 
 (define (dre-or left right)
+  ;; r + r       => r
+  ;; r + s       => s + r (see dre-equal?)
+  ;; (r + s) + t => r + (s + t)
+  ;; ∅ + r       => r
+  ;; ¬∅ + r      => ¬∅
   (cond
    [(not (dre? left))       (error "not a regular expression: " left)]
    [(not (dre? right))      (error "not a regular expression: " right)]
@@ -131,6 +141,9 @@
    ))
 
 (define (dre-closure regex)
+  ;; (r*)* => r*
+  ;; ϵ*    => ϵ
+  ;; ∅*    => ϵ
   (cond
    [(not (dre? regex))    (error "not a regular expression: " regex)]
    [(dre-null? regex)     dre-empty]
@@ -140,6 +153,11 @@
    ))
 
 (define (dre-and left right)
+  ;; r & r       => r
+  ;; r & s       => s & r (see dre-equal?)
+  ;; (r & s) & t => r & (s & t)
+  ;; ∅ & r       => ∅
+  ;; ¬∅ & r      => r
   (cond
    [(not (dre? left))       (error "not a regular expression: " left)]
    [(not (dre? right))      (error "not a regular expression: " right)]
@@ -155,6 +173,7 @@
    ))
 
 (define (dre-negation regex)
+  ;; ¬(¬r) => r
   (if (dre-negation? regex)
       (dre-negation-regex regex)
       (dre-negation-raw regex))
