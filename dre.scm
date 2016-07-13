@@ -7,7 +7,8 @@
 
 ;;; [2] http://www.ccs.neu.edu/home/turon/re-deriv.pdf
 
-(use-modules (srfi srfi-9))
+(use-modules (srfi srfi-9))             ; Record types
+(use-modules (srfi srfi-1))             ; Lists: fold, etc.
 
 ;; ---------------------------
 
@@ -15,17 +16,24 @@
   (set-raw elts) set?
   (elts set-elts))
 
+(define (unique lst)
+  (let loop ([acc '()]
+             [l lst])
+    (if (null? l)
+        (reverse acc)
+        (loop (cons (car l) acc) (delete (car l) (cdr l))) )) )
+
 (define (set . elts)
-  (set-raw elts))
+  (set-raw (unique elts)))
 
 (define (list->set lst)
-  (set-raw lst))
+  (set-raw (unique lst)))
 
 (define (set-union s1 s2)
   (cond
    [(not (set? s1)) (error "not a set:" s1)]
    [(not (set? s2)) (error "not a set:" s2)]
-   [else (set-raw (append (set-elts s1) (set-elts s2)))]
+   [else (set-raw (unique (append (set-elts s1) (set-elts s2))))]
    ))
 
 (define (set-intersection s1 s2)
@@ -35,7 +43,7 @@
    [else (let* ([e1 (set-elts s1)]
                 [e2 (set-elts s2)]
                 [intersection (filter (lambda (elt) (member elt e1)) e2)])
-           (set-raw intersection))]
+           (set-raw (unique intersection)))]
    ))
 
 (define (set-member? set elt)
@@ -122,6 +130,26 @@
   (let ([is-member (set-member? (dre-chars-set re) ch)])
     (if (dre-chars-pos? re) is-member (not is-member)) ))
 
+(define (dre-chars-intersection l r)
+  (cond
+   [(and (dre-chars-pos? l) (dre-chars-pos? r))
+    ;; both positive: simple intersection
+    (dre-chars-raw #t (set-intersection (dre-chars-set l) (dre-chars-set r)))]
+   [(dre-chars-pos? l)
+    ;; l positive, r negative: elts in l also in r by dre-chars-member?
+    (dre-chars (fold (lambda (elt acc) (if (dre-chars-member? r elt)
+                                           (cons elt acc)
+                                           acc))
+                     '()
+                     (set-elts (dre-chars-set l))))]
+   [(dre-chars-pos? r)
+    ;; l negative, r positive: the mathematician's answer
+    (dre-chars-intersection r l)]
+   [else
+    ;; both negative: slightly less simple union
+    (dre-chars-raw #f (set-union (dre-chars-set l) (dre-chars-set r)))]
+   ))
+
 (define dre-null (dre-null-raw))
 
 (define dre-empty (dre-empty-raw))
@@ -129,13 +157,12 @@
 ;; These constructors enforce canonical forms as per Section 4.1 of re-deriv.
 
 (define (dre-chars chars)
-  (cond
-   [(null? chars) dre-null]
-   [else          (dre-chars-raw #t (list->set chars))]
-   ))
+  (dre-chars-raw #t (list->set chars)))
 
 (define (dre-chars-neg chars)
   (dre-chars-raw #f (list->set chars)))
+
+(define dre-chars-sigma (dre-chars-neg '()))
 
 (define (dre-concat left right)
   ;; (r ∙ s) ∙ t => r ∙ (s ∙ t)
@@ -377,7 +404,32 @@
 
 ;;; Section 4.2 Computing character set derivative classes
 
+(define (C-hat r s)
+  (let ([set-r (set-elts r)]
+        [set-s (set-elts s)])
+    (list->set
+     (fold (lambda (elt-r acc-r)
+             (append (fold (lambda (elt-s acc-s)
+                             (cons (dre-chars-intersection elt-r elt-s)
+                                   acc-s))
+                           '()
+                           set-s)
+                     acc-r))
+           '()
+           set-r))))
+
 (define (C re)
   (cond
-   [(dre-empty? re) (cons (dre-chars-neg '()) '())]
+   [(dre-empty? re)    (set dre-chars-sigma)]
+   [(dre-chars? re)    (set re (dre-chars-neg (set-elts (dre-chars-set re))))]
+   [(dre-concat? re)   (let ([r (dre-concat-left re)]
+                             [s (dre-concat-right re)])
+                         (if (dre-empty? (nu r))
+                             (C-hat (C r) (C s))
+                             (C r)))]
+   [(dre-or? re)       (C-hat (C (dre-or-left re)) (C (dre-or-right re)))]
+   [(dre-and? re)      (C-hat (C (dre-and-left re)) (C (dre-and-right re)))]
+   [(dre-closure? re)  (C (dre-closure-regex re))]
+   [(dre-negation? re) (C (dre-negation-regex re))]
+   [else (error "unhelpful regular expression:" re)]
    ))
