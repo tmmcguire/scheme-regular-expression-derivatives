@@ -51,6 +51,16 @@
       (member elt (set-elts set))
       (error "not a set:" set)))
 
+(define (set-empty? set)
+  (if (set? set)
+      (null? (set-elts set))
+      (error "not a set:" set)))
+
+(define (set-find set pred)
+  (if (set? set)
+      (find pred (set-elts set))
+      (error "not a set:" set)))
+
 ;; ---------------------------
 
 (define-record-type dre-null-t          ; The empty language; the null set
@@ -126,9 +136,20 @@
    [else (equal? left right)]
    ))
 
+(define dre-null (dre-null-raw))
+
+(define dre-empty (dre-empty-raw))
+
 (define (dre-chars-member? re ch)
   (let ([is-member (set-member? (dre-chars-set re) ch)])
     (if (dre-chars-pos? re) is-member (not is-member)) ))
+
+(define (dre-chars-empty? chars)
+  (cond
+   [(not (dre-chars? chars)) (error "not a character set:" chars)]
+   [(dre-chars-pos? chars)   (set-empty? (dre-chars-set chars))]
+   [else                     #f]
+   ))
 
 (define (dre-chars-intersection l r)
   (cond
@@ -150,9 +171,14 @@
     (dre-chars-raw #f (set-union (dre-chars-set l) (dre-chars-set r)))]
    ))
 
-(define dre-null (dre-null-raw))
-
-(define dre-empty (dre-empty-raw))
+(define (dre-chars-choice chars)
+  (cond
+   [(not (dre-chars? chars))
+    (error "not a character set:" chars)]
+   [(and (dre-chars-pos? chars) (not (dre-chars-empty? chars)))
+    (car (set-elts (dre-chars-set chars)))]
+   [else 'a]
+   ))
 
 ;; These constructors enforce canonical forms as per Section 4.1 of re-deriv.
 
@@ -431,5 +457,66 @@
    [(dre-and? re)      (C-hat (C (dre-and-left re)) (C (dre-and-right re)))]
    [(dre-closure? re)  (C (dre-closure-regex re))]
    [(dre-negation? re) (C (dre-negation-regex re))]
+   [(dre-null? re)     (set)]
    [else (error "unhelpful regular expression:" re)]
    ))
+
+(define-record-type dre-transition-t    ; <state, input, state'> transition
+  (dre-transition state input state') dre-transition?
+  (state dre-transition-origin)
+  (input dre-transition-input)
+  (state' dre-transition-destination))
+
+(define-record-type dre-engine-t        ; (Set of states, Transition function)
+  (dre-engine states transitions) dre-engine?
+  (states dre-engine-states)
+  (transitions dre-engine-transitions))
+
+(define-record-type dre-machine-t       ; Finite state machine
+  (dre-machine states start terminating transitions) dre-machine?
+  (states dre-machine-states)
+  (start dre-machine-start)
+  (terminating dre-machine-terminating)
+  (transitions dre-machine-transitions))
+
+(define-record-type dre-state-t         ; A state in the machine
+  (dre-state-raw n re) dre-state?
+  (n dre-state-number)
+  (re dre-state-regex))
+
+(define dre-state-count 0)
+
+(define (dre-state re)
+  (let ([n dre-state-count])
+    (set! dre-state-count (+ dre-state-count 1))
+    (dre-state-raw n re)))
+
+(define (dre->dfa r)
+
+  (define (goto q S engine)
+    (let* ([Q (dre-engine-states engine)]
+           [d (dre-engine-transitions engine)]
+           [c (dre-chars-choice S)]
+           [qc (delta (dre-state-regex q) c)]
+           [q' (set-find Q (lambda (q') (dre-equal? (dre-state-regex q') qc)))])
+      (if q'
+          (dre-engine Q (set-union d (set (dre-transition q S q'))))
+          (let ([q' (dre-state qc)])
+            (explore (set-union Q (set q'))
+                     (set-union d (set (dre-transition q S q')))
+                     q')) )))
+
+  (define (explore Q d q)
+    (fold (lambda (S engine) (goto q S engine))
+          (dre-engine Q d)
+          (filter dre-chars-pos? (set-elts (C (dre-state-regex q))))))
+
+  (let* ([q0 (dre-state r)]
+         [engine (explore (set q0) (set) q0)]
+         [states (dre-engine-states engine)]
+         [transitions (dre-engine-transitions engine)]
+         [F  (remove (lambda (q) (not (dre-empty? (nu (dre-state-regex q)))))
+                     (set-elts states))])
+    (dre-machine states q0 F transitions)
+    ))
+
