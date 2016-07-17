@@ -598,7 +598,9 @@
   (define (explore Q d q)
     (fold (lambda (S engine) (goto q S engine))
           (cons Q d)
-          (set-elts (C (dre-state-regex q)))))
+          (remove (lambda (s)
+                    (dre-chars-empty? s))
+                  (set-elts (C (dre-state-regex q))))))
 
   (let* ([q0 (dre-state r)]
          [engine (explore (set q0) (set) q0)]
