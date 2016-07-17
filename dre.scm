@@ -541,7 +541,8 @@
 (define (C re)
   (cond
    [(dre-empty? re)    (set dre-chars-sigma)]
-   [(dre-chars? re)    (set re (dre-chars-neg (set-elts (dre-chars-set re))))]
+   [(dre-chars? re)    (let ([elts (set-elts (dre-chars-set re))])
+                         (set (dre-chars elts) (dre-chars-neg elts)))]
    [(dre-concat? re)   (let ([r (dre-concat-left re)]
                              [s (dre-concat-right re)])
                          (if (dre-empty? (nu r))
