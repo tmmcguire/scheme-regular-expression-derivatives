@@ -9,12 +9,24 @@
 
 (use-modules (srfi srfi-1))             ; Lists: fold, etc.
 (use-modules (srfi srfi-9))             ; Record types
+(use-modules (srfi srfi-9 gnu))         ; Custom record printers
 
 ;; ---------------------------
 
 (define-record-type set-t               ; A set structure
   (set-raw elts) set?
   (elts set-elts))
+
+(set-record-type-printer!
+ set-t
+ (lambda (record port)
+   (write-char #\[ port)
+   (let loop ([elts (set-elts record)])
+     (unless (null? elts)
+       (display (car elts) port)
+       (unless (null? (cdr elts)) (write-char #\space port))
+       (loop (cdr elts))))
+   (write-char #\] port)))
 
 (define (unique lst)
   (let loop ([acc '()]
@@ -72,10 +84,20 @@
 
 (define dre-null (dre-null-raw))
 
+(set-record-type-printer!
+ dre-null-t
+ (lambda (record port)
+   (display "∅" port)))
+
 ;; ---------------------------
 
 (define-record-type dre-empty-t         ; The empty string
   (dre-empty-raw) dre-empty?)
+
+(set-record-type-printer!
+ dre-empty-t
+ (lambda (record port)
+   (display "ϵ" port)))
 
 (define dre-empty (dre-empty-raw))
 
@@ -85,6 +107,18 @@
   (dre-chars-raw positive chars) dre-chars?
   (positive dre-chars-pos?)
   (chars dre-chars-set))
+
+(set-record-type-printer!
+ dre-chars-t
+ (lambda (record port)
+   (write-char #\[ port)
+   (unless (dre-chars-pos? record) (write-char #\^ port))
+   (let loop ([chars (set-elts (dre-chars-set record))])
+     (unless (null? chars)
+       (write-char (car chars) port)
+       (loop (cdr chars))))
+   (write-char #\] port)
+   ))
 
 (define (dre-chars chars)
   (dre-chars-raw #t (list->set chars)))
@@ -141,6 +175,12 @@
   (left dre-concat-left)
   (right dre-concat-right))
 
+(set-record-type-printer!
+ dre-concat-t
+ (lambda (record port)
+   (display (dre-concat-left record) port)
+   (display (dre-concat-right record) port)))
+
 (define (dre-concat left right)
   ;; (r ∙ s) ∙ t => r ∙ (s ∙ t)
   ;; ∅ ∙ r       => ∅
@@ -166,6 +206,15 @@
   (dre-or-raw left right) dre-or?
   (left dre-or-left)
   (right dre-or-right))
+
+(set-record-type-printer!
+ dre-or-t
+ (lambda (record port)
+   (write-char #\( port)
+   (display (dre-or-left record) port)
+   (write-char #\| port)
+   (display (dre-or-right record) port)
+   (write-char #\) port)))
 
 (define (dre-or left right)
   ;; r + r       => r
@@ -193,6 +242,12 @@
   (dre-closure-raw regex) dre-closure?
   (regex dre-closure-regex))
 
+(set-record-type-printer!
+ dre-closure-t
+ (lambda (record port)
+   (display (dre-closure-regex record) port)
+   (write-char #\* port)))
+
 (define (dre-closure regex)
   ;; (r*)* => r*
   ;; ϵ*    => ϵ
@@ -211,6 +266,15 @@
   (dre-and-raw left right) dre-and?
   (left dre-and-left)
   (right dre-and-right))
+
+(set-record-type-printer!
+ dre-and-t
+ (lambda (record port)
+   (write-char #\( port)
+   (display (dre-and-left record) port)
+   (write-char #\& port)
+   (display (dre-and-right record) port)
+   (write-char #\) port)))
 
 (define (dre-and left right)
   ;; r & r       => r
@@ -237,6 +301,12 @@
 (define-record-type dre-negation-t      ; Complement
   (dre-negation-raw regex) dre-negation?
   (regex dre-negation-regex))
+
+(set-record-type-printer!
+ dre-negation-t
+ (lambda (record port)
+   (write-char #\¬ port)
+   (display (dre-negation-regex record) port)))
 
 (define (dre-negation regex)
   ;; ¬(¬r) => r
