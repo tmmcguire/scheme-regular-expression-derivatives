@@ -7,8 +7,8 @@
 
 ;;; [2] http://www.ccs.neu.edu/home/turon/re-deriv.pdf
 
-(use-modules (srfi srfi-9))             ; Record types
 (use-modules (srfi srfi-1))             ; Lists: fold, etc.
+(use-modules (srfi srfi-9))             ; Record types
 
 ;; ---------------------------
 
@@ -61,84 +61,38 @@
       (find pred (set-elts set))
       (error "not a set:" set)))
 
+;; ===========================
+
+;; These constructors enforce canonical forms as per Section 4.1 of re-deriv.
+
 ;; ---------------------------
 
 (define-record-type dre-null-t          ; The empty language; the null set
   (dre-null-raw) dre-null?)
 
+(define dre-null (dre-null-raw))
+
+;; ---------------------------
+
 (define-record-type dre-empty-t         ; The empty string
   (dre-empty-raw) dre-empty?)
+
+(define dre-empty (dre-empty-raw))
+
+;; ---------------------------
 
 (define-record-type dre-chars-t         ; Set of characters
   (dre-chars-raw positive chars) dre-chars?
   (positive dre-chars-pos?)
   (chars dre-chars-set))
 
-(define-record-type dre-concat-t        ; Concatenation; sequence
-  (dre-concat-raw left right) dre-concat?
-  (left dre-concat-left)
-  (right dre-concat-right))
+(define (dre-chars chars)
+  (dre-chars-raw #t (list->set chars)))
 
-(define-record-type dre-or-t            ; Logical or; alternation; union
-  (dre-or-raw left right) dre-or?
-  (left dre-or-left)
-  (right dre-or-right))
+(define (dre-chars-neg chars)
+  (dre-chars-raw #f (list->set chars)))
 
-(define-record-type dre-closure-t       ; Kleene closure; repetition
-  (dre-closure-raw regex) dre-closure?
-  (regex dre-closure-regex))
-
-(define-record-type dre-and-t           ; Logical and; intersection
-  (dre-and-raw left right) dre-and?
-  (left dre-and-left)
-  (right dre-and-right))
-
-(define-record-type dre-negation-t      ; Complement
-  (dre-negation-raw regex) dre-negation?
-  (regex dre-negation-regex))
-
-(define (dre? re)
-  (or (dre-null? re)
-      (dre-empty? re)
-      (dre-chars? re)
-      (dre-concat? re)
-      (dre-or? re)
-      (dre-closure? re)
-      (dre-and? re)
-      (dre-negation? re)
-      ))
-
-;; Section 4.1 of re-deriv. This assumes the regular expressions are in
-;; canonical form, as per the constructors below.
-
-(define (dre-equal? left right)
-  (cond
-   [(not (dre? left))  #f]
-   [(not (dre? right)) #f]
-   [(and (dre-and? left) (dre-and? right))
-    (let ([l1 (dre-and-left left)]
-          [l2 (dre-and-right left)]
-          [r1 (dre-and-left right)]
-          [r2 (dre-and-right right)])
-      (or (and (dre-equal? l1 r1)
-               (dre-equal? l2 r2))
-          (and (dre-equal? l1 r2)
-               (dre-equal? l2 r1))))]
-   [(and (dre-or? left) (dre-or? right))
-    (let ([l1 (dre-or-left left)]
-          [l2 (dre-or-right left)]
-          [r1 (dre-or-left right)]
-          [r2 (dre-or-right right)])
-      (or (and (dre-equal? l1 r1)
-               (dre-equal? l2 r2))
-          (and (dre-equal? l1 r2)
-               (dre-equal? l2 r1))))]
-   [else (equal? left right)]
-   ))
-
-(define dre-null (dre-null-raw))
-
-(define dre-empty (dre-empty-raw))
+(define dre-chars-sigma (dre-chars-neg '()))
 
 (define (dre-chars-member? re ch)
   (let ([is-member (set-member? (dre-chars-set re) ch)])
@@ -180,15 +134,12 @@
    [else (gensym)]                      ; Not a character
    ))
 
-;; These constructors enforce canonical forms as per Section 4.1 of re-deriv.
+;; ---------------------------
 
-(define (dre-chars chars)
-  (dre-chars-raw #t (list->set chars)))
-
-(define (dre-chars-neg chars)
-  (dre-chars-raw #f (list->set chars)))
-
-(define dre-chars-sigma (dre-chars-neg '()))
+(define-record-type dre-concat-t        ; Concatenation; sequence
+  (dre-concat-raw left right) dre-concat?
+  (left dre-concat-left)
+  (right dre-concat-right))
 
 (define (dre-concat left right)
   ;; (r ∙ s) ∙ t => r ∙ (s ∙ t)
@@ -208,6 +159,13 @@
                                                        right))]
    [else               (dre-concat-raw left right)]
    ))
+
+;; ---------------------------
+
+(define-record-type dre-or-t            ; Logical or; alternation; union
+  (dre-or-raw left right) dre-or?
+  (left dre-or-left)
+  (right dre-or-right))
 
 (define (dre-or left right)
   ;; r + r       => r
@@ -229,6 +187,12 @@
    [else (dre-or-raw left   right)]
    ))
 
+;; ---------------------------
+
+(define-record-type dre-closure-t       ; Kleene closure; repetition
+  (dre-closure-raw regex) dre-closure?
+  (regex dre-closure-regex))
+
 (define (dre-closure regex)
   ;; (r*)* => r*
   ;; ϵ*    => ϵ
@@ -240,6 +204,13 @@
    [(dre-closure? regex)  regex]
    [else (dre-closure-raw regex)]
    ))
+
+;; ---------------------------
+
+(define-record-type dre-and-t           ; Logical and; intersection
+  (dre-and-raw left right) dre-and?
+  (left dre-and-left)
+  (right dre-and-right))
 
 (define (dre-and left right)
   ;; r & r       => r
@@ -261,12 +232,61 @@
    [else                    (dre-and-raw left right)]
    ))
 
+;; ---------------------------
+
+(define-record-type dre-negation-t      ; Complement
+  (dre-negation-raw regex) dre-negation?
+  (regex dre-negation-regex))
+
 (define (dre-negation regex)
   ;; ¬(¬r) => r
   (if (dre-negation? regex)
       (dre-negation-regex regex)
       (dre-negation-raw regex))
   )
+
+;; ===========================
+
+(define (dre? re)
+  (or (dre-null? re)
+      (dre-empty? re)
+      (dre-chars? re)
+      (dre-concat? re)
+      (dre-or? re)
+      (dre-closure? re)
+      (dre-and? re)
+      (dre-negation? re)
+      ))
+
+;; Section 4.1 of re-deriv. This assumes the regular expressions are in
+;; canonical form, as per the constructors below.
+
+(define (dre-equal? left right)
+  (cond
+   [(not (dre? left))  #f]
+   [(not (dre? right)) #f]
+   [(and (dre-and? left) (dre-and? right))
+    (let ([l1 (dre-and-left left)]
+          [l2 (dre-and-right left)]
+          [r1 (dre-and-left right)]
+          [r2 (dre-and-right right)])
+      (or (and (dre-equal? l1 r1)
+               (dre-equal? l2 r2))
+          (and (dre-equal? l1 r2)
+               (dre-equal? l2 r1))))]
+   [(and (dre-or? left) (dre-or? right))
+    (let ([l1 (dre-or-left left)]
+          [l2 (dre-or-right left)]
+          [r1 (dre-or-left right)]
+          [r2 (dre-or-right right)])
+      (or (and (dre-equal? l1 r1)
+               (dre-equal? l2 r2))
+          (and (dre-equal? l1 r2)
+               (dre-equal? l2 r1))))]
+   [else (equal? left right)]
+   ))
+
+;; ===========================
 
 (define (nu re)
   (cond
@@ -311,6 +331,8 @@
    ))
 
 (define (dre-match? re str) (dre-match-list? re (string->list str)))
+
+;; ===========================
 
 ;;; http://matt.might.net/articles/parsing-regex-with-recursive-descent/
 
@@ -428,6 +450,8 @@
           r))
     ))
 
+;; ===========================
+
 ;;; Section 4.2 Computing character set derivative classes
 
 (define (C-hat r s)
@@ -503,7 +527,7 @@
   (define (explore Q d q)
     (fold (lambda (S engine) (goto q S engine))
           (cons Q d)
-          (filter dre-chars-pos? (set-elts (C (dre-state-regex q))))))
+          (set-elts (C (dre-state-regex q)))))
 
   (let* ([q0 (dre-state r)]
          [engine (explore (set q0) (set) q0)]
@@ -514,6 +538,8 @@
                     (set-elts states))])
     (dre-machine states q0 F transitions)
     ))
+
+;; ===========================
 
 (define (display-dfa machine)
 
@@ -561,6 +587,8 @@
     (newline)
     (display-transitions (set-elts (dre-machine-transitions machine)))]
    ))
+
+;; ===========================
 
 (define t (string->dre "ab(c|d)*"))
 (define u (dre->dfa t))
