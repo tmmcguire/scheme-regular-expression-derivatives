@@ -177,7 +177,7 @@
     (error "not a character set:" chars)]
    [(and (dre-chars-pos? chars) (not (dre-chars-empty? chars)))
     (car (set-elts (dre-chars-set chars)))]
-   [else 'a]
+   [else (gensym)]                      ; Not a character
    ))
 
 ;; These constructors enforce canonical forms as per Section 4.1 of re-deriv.
@@ -467,11 +467,6 @@
   (input dre-transition-input)
   (state' dre-transition-destination))
 
-(define-record-type dre-engine-t        ; (Set of states, Transition function)
-  (dre-engine states transitions) dre-engine?
-  (states dre-engine-states)
-  (transitions dre-engine-transitions))
-
 (define-record-type dre-machine-t       ; Finite state machine
   (dre-machine states start terminating transitions) dre-machine?
   (states dre-machine-states)
@@ -484,23 +479,22 @@
   (n dre-state-number)
   (re dre-state-regex))
 
-(define dre-state-count 0)
-
-(define (dre-state re)
-  (let ([n dre-state-count])
-    (set! dre-state-count (+ dre-state-count 1))
-    (dre-state-raw n re)))
+(define dre-state
+  (let ([state-count 0])
+    (lambda (re)
+      (set! state-count (+ state-count 1))
+      (dre-state-raw state-count re))))
 
 (define (dre->dfa r)
 
   (define (goto q S engine)
-    (let* ([Q (dre-engine-states engine)]
-           [d (dre-engine-transitions engine)]
+    (let* ([Q (car engine)]
+           [d (cdr engine)]
            [c (dre-chars-choice S)]
            [qc (delta (dre-state-regex q) c)]
            [q' (set-find Q (lambda (q') (dre-equal? (dre-state-regex q') qc)))])
       (if q'
-          (dre-engine Q (set-union d (set (dre-transition q S q'))))
+          (cons Q (set-union d (set (dre-transition q S q'))))
           (let ([q' (dre-state qc)])
             (explore (set-union Q (set q'))
                      (set-union d (set (dre-transition q S q')))
@@ -508,15 +502,66 @@
 
   (define (explore Q d q)
     (fold (lambda (S engine) (goto q S engine))
-          (dre-engine Q d)
+          (cons Q d)
           (filter dre-chars-pos? (set-elts (C (dre-state-regex q))))))
 
   (let* ([q0 (dre-state r)]
          [engine (explore (set q0) (set) q0)]
-         [states (dre-engine-states engine)]
-         [transitions (dre-engine-transitions engine)]
-         [F  (remove (lambda (q) (not (dre-empty? (nu (dre-state-regex q)))))
-                     (set-elts states))])
+         [states (car engine)]
+         [transitions (cdr engine)]
+         [F (remove (lambda (q)
+                      (not (dre-empty? (nu (dre-state-regex q)))))
+                    (set-elts states))])
     (dre-machine states q0 F transitions)
     ))
 
+(define (display-dfa machine)
+
+  (define (display-state st)
+    (display (dre-state-number st)))
+
+  (define (display-terminating sts)
+    (if (null? sts)
+        '()
+        (begin (display-state (car sts))
+               (display " ")
+               (display-terminating (cdr sts)))))
+
+  (define (display-chars chs)
+    (if (dre-chars-pos? chs)
+        (display (set-elts (dre-chars-set chs)))
+        (begin (display "not ")
+               (display (set-elts (dre-chars-set chs))))))
+
+  (define (display-transition trans)
+    (display-state (dre-transition-origin trans))
+    (display " -- ")
+    (display-chars (dre-transition-input trans))
+    (display " -> ")
+    (display-state (dre-transition-destination trans))
+    )
+
+  (define (display-transitions trans)
+    (if (null? trans)
+        '()
+        (begin (display-transition (car trans))
+               (newline)
+               (display-transitions (cdr trans)))))
+
+  (cond
+   [(not (dre-machine? machine)) (error "not a DFA:" machine)]
+   [else
+    (display "Start: ")
+    (display-state (dre-machine-start machine))
+    (newline)
+    (display "Final: ")
+    (display-terminating (dre-machine-terminating machine))
+    (newline)
+    (display "Transitions:")
+    (newline)
+    (display-transitions (set-elts (dre-machine-transitions machine)))]
+   ))
+
+(define t (string->dre "ab(c|d)*"))
+(define u (dre->dfa t))
+(display-dfa u)
