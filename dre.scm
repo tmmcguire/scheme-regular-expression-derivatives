@@ -544,7 +544,7 @@
    [(dre-and? re)      (C-hat (C (dre-and-left re)) (C (dre-and-right re)))]
    [(dre-closure? re)  (C (dre-closure-regex re))]
    [(dre-negation? re) (C (dre-negation-regex re))]
-   [(dre-null? re)     (set)]
+   [(dre-null? re)     (set dre-chars-sigma)]
    [else (error "unhelpful regular expression:" re)]
    ))
 
