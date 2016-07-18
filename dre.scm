@@ -10,6 +10,7 @@
 (use-modules (srfi srfi-1))             ; Lists: fold, etc.
 (use-modules (srfi srfi-9))             ; Record types
 (use-modules (srfi srfi-9 gnu))         ; Custom record printers
+(use-modules (srfi srfi-42))            ; List comprehensions
 
 ;; ---------------------------
 
@@ -231,8 +232,8 @@
    [(and (dre-negation? left)
          (dre-null? (dre-negation-regex left))) left]
    [(dre-or? left)          (dre-or-raw (dre-or-left left)
-                                        (dre-and-raw (dre-and-right left)
-                                                     right))]
+                                        (dre-or-raw (dre-or-right left)
+                                                    right))]
    [else (dre-or-raw left   right)]
    ))
 
@@ -525,18 +526,9 @@
 ;;; Section 4.2 Computing character set derivative classes
 
 (define (C-hat r s)
-  (let ([set-r (set-elts r)]
-        [set-s (set-elts s)])
-    (list->set
-     (fold (lambda (elt-r acc-r)
-             (append (fold (lambda (elt-s acc-s)
-                             (cons (dre-chars-intersection elt-r elt-s)
-                                   acc-s))
-                           '()
-                           set-s)
-                     acc-r))
-           '()
-           set-r))))
+  (list->set (list-ec (:list elt-r (set-elts r))
+                      (:list elt-s (set-elts s))
+                      (dre-chars-intersection elt-r elt-s))))
 
 (define (C re)
   (cond
