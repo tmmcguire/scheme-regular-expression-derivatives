@@ -658,3 +658,54 @@
 (define t (string->dre "ab(c|d)*"))
 (define u (dre->dfa t))
 (display-dfa u)
+
+;; ===========================
+
+(define-record-type dre-vector-t        ; A vector of DFAs
+  (dre-vector v) dre-vector?
+  (v dre-vector-list))
+
+(define (delta-vector v ch)
+  (unless (dre-vector? v) (error "not a DFA vector:" v))
+  (dre-vector (map (lambda (r) (delta r ch)) (dre-vector-list v))))
+
+(define (Cv v)
+  (unless (dre-vector? v) (error "not a DFA vector:" v))
+  (let* ([vs (dre-vector-list v)]
+         [cs (map C vs)])
+    ;;    (reduce (lambda (l r) (C-hat l r)) (set) cs))
+    (reduce set-union (set) cs))
+  )
+
+(define (dre-vector-equal? l r)
+  (every dre-equal? (dre-vector-list l) (dre-vector-list r)))
+
+(define (drev->dfav r)
+
+  (define (goto q S engine)
+    (let* ([Q (car engine)]
+           [d (cdr engine)]
+           [c (dre-chars-choice S)]
+           [qc (delta-vector (dre-state-regex q) c)]
+           [q' (set-find Q (lambda (q') (dre-vector-equal? (dre-state-regex q') qc)))])
+      (if q'
+          (cons Q (set-union d (set (dre-transition q S q'))))
+          (let ([q' (dre-state qc)])
+            (explore (set-union Q (set q'))
+                     (set-union d (set (dre-transition q S q')))
+                     q')) )))
+
+  (define (explore Q d q)
+    (fold (lambda (S engine) (goto q S engine))
+          (cons Q d)
+          (remove (lambda (s)
+                    (dre-chars-empty? s))
+                  (set-elts (Cv (dre-state-regex q))))))
+
+  (let* ([q0 (dre-state r)]
+         [engine (explore (set q0) (set) q0)]
+         [states (car engine)]
+         [transitions (cdr engine)]
+         [F '()])
+    (dre-machine states q0 F transitions)
+    ))
