@@ -147,11 +147,8 @@
     (dre-chars-raw #t (set-intersection (dre-chars-set l) (dre-chars-set r)))]
    [(dre-chars-pos? l)
     ;; l positive, r negative: elts in l also in r by dre-chars-member?
-    (dre-chars (fold (lambda (elt acc) (if (dre-chars-member? r elt)
-                                           (cons elt acc)
-                                           acc))
-                     '()
-                     (set-elts (dre-chars-set l))))]
+    (dre-chars (filter (lambda (elt) (dre-chars-member? r elt))
+                       (set-elts (dre-chars-set l))))]
    [(dre-chars-pos? r)
     ;; l negative, r positive: the mathematician's answer
     (dre-chars-intersection r l)]
@@ -590,8 +587,7 @@
   (define (explore Q d q)
     (fold (lambda (S engine) (goto q S engine))
           (cons Q d)
-          (remove (lambda (s)
-                    (dre-chars-empty? s))
+          (remove dre-chars-empty?
                   (set-elts (C (dre-state-regex q))))))
 
   (let* ([q0 (dre-state r)]
@@ -666,16 +662,10 @@
   (v dre-vector-list))
 
 (define (delta-vector v ch)
-  (unless (dre-vector? v) (error "not a DFA vector:" v))
   (dre-vector (map (lambda (r) (delta r ch)) (dre-vector-list v))))
 
 (define (Cv v)
-  (unless (dre-vector? v) (error "not a DFA vector:" v))
-  (let* ([vs (dre-vector-list v)]
-         [cs (map C vs)])
-    ;;    (reduce (lambda (l r) (C-hat l r)) (set) cs))
-    (reduce set-union (set) cs))
-  )
+  (fold C-hat (set dre-chars-sigma) (map C (dre-vector-list v))))
 
 (define (dre-vector-equal? l r)
   (every dre-equal? (dre-vector-list l) (dre-vector-list r)))
@@ -698,8 +688,7 @@
   (define (explore Q d q)
     (fold (lambda (S engine) (goto q S engine))
           (cons Q d)
-          (remove (lambda (s)
-                    (dre-chars-empty? s))
+          (remove dre-chars-empty?
                   (set-elts (Cv (dre-state-regex q))))))
 
   (let* ([q0 (dre-state r)]
