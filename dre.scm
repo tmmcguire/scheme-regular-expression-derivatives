@@ -51,12 +51,15 @@
 
 (define (set-intersection s1 s2)
   (cond
-   [(not (set? s1)) (error "not a set:" s1)]
-   [(not (set? s2)) (error "not a set:" s2)]
-   [else (let* ([e1 (set-elts s1)]
-                [e2 (set-elts s2)]
-                [intersection (filter (lambda (elt) (member elt e1)) e2)])
-           (set-raw (unique intersection)))]
+   [(not (set? s1))
+    (error "not a set:" s1)]
+   [(not (set? s2))
+    (error "not a set:" s2)]
+   [else
+    (let* ([e1 (set-elts s1)]
+           [e2 (set-elts s2)]
+           [intersection (filter (lambda (elt) (member elt e1)) e2)])
+      (set-raw (unique intersection)))]
    ))
 
 (define (set-member? set elt)
@@ -83,12 +86,12 @@
 (define-record-type dre-null-t          ; The empty language; the null set
   (dre-null-raw) dre-null?)
 
-(define dre-null (dre-null-raw))
-
 (set-record-type-printer!
  dre-null-t
  (lambda (record port)
    (display "∅" port)))
+
+(define dre-null (dre-null-raw))
 
 ;; ---------------------------
 
@@ -186,16 +189,24 @@
   ;; ϵ ∙ r       => r
   ;; r ∙ ϵ       => r
   (cond
-   [(not (dre? left))  (error "not a regular expression: " left)]
-   [(not (dre? right)) (error "not a regular expression: " right)]
-   [(dre-null? left)   left]
-   [(dre-null? right)  right]
-   [(dre-empty? left)  right]
-   [(dre-empty? right) left]
-   [(dre-concat? left) (dre-concat-raw (dre-concat-left left)
-                                       (dre-concat-raw (dre-concat-right left)
-                                                       right))]
-   [else               (dre-concat-raw left right)]
+   [(not (dre? left))
+    (error "not a regular expression: " left)]
+   [(not (dre? right))
+    (error "not a regular expression: " right)]
+   [(dre-null? left)
+    dre-null]
+   [(dre-null? right)
+    dre-null]
+   [(dre-empty? left)
+    right]
+   [(dre-empty? right)
+    left]
+   [(dre-concat? left)
+    (dre-concat (dre-concat-left left)
+                (dre-concat (dre-concat-right left)
+                            right))]
+   [else
+    (dre-concat-raw left right)]
    ))
 
 ;; ---------------------------
@@ -221,17 +232,25 @@
   ;; ∅ + r       => r
   ;; ¬∅ + r      => ¬∅
   (cond
-   [(not (dre? left))       (error "not a regular expression: " left)]
-   [(not (dre? right))      (error "not a regular expression: " right)]
-   [(dre-null? left)        right]
-   [(dre-null? right)       left]
-   [(dre-equal? left right) left]
+   [(not (dre? left))
+    (error "not a regular expression: " left)]
+   [(not (dre? right))
+    (error "not a regular expression: " right)]
+   [(dre-null? left)
+    right]
+   [(dre-null? right)
+    left]
+   [(dre-equal? left right)
+    left]
    [(and (dre-negation? left)
-         (dre-null? (dre-negation-regex left))) left]
-   [(dre-or? left)          (dre-or-raw (dre-or-left left)
-                                        (dre-or-raw (dre-or-right left)
-                                                    right))]
-   [else (dre-or-raw left   right)]
+         (dre-null? (dre-negation-regex left)))
+    left]
+   [(dre-or? left)
+    (dre-or (dre-or-left left)
+            (dre-or (dre-or-right left)
+                    right))]
+   [else
+    (dre-or-raw left   right)]
    ))
 
 ;; ---------------------------
@@ -281,17 +300,25 @@
   ;; ∅ & r       => ∅
   ;; ¬∅ & r      => r
   (cond
-   [(not (dre? left))       (error "not a regular expression: " left)]
-   [(not (dre? right))      (error "not a regular expression: " right)]
-   [(dre-null? left)        left]
-   [(dre-null? right)       right]
-   [(dre-equal? left right) left]
-   [(dre-and? left)         (dre-and-raw (dre-and-left left)
-                                         (dre-and-raw (dre-and-right left)
-                                                      right))]
+   [(not (dre? left))
+    (error "not a regular expression: " left)]
+   [(not (dre? right))
+    (error "not a regular expression: " right)]
+   [(dre-null? left)
+    dre-null]
+   [(dre-null? right)
+    dre-null]
+   [(dre-equal? left right)
+    left]
+   [(dre-and? left)
+    (dre-and (dre-and-left left)
+             (dre-and (dre-and-right left)
+                      right))]
    [(and (dre-negation? left)
-         (dre-null? (dre-negation-regex left))) right]
-   [else                    (dre-and-raw left right)]
+         (dre-null? (dre-negation-regex left)))
+    right]
+   [else
+    (dre-and-raw left right)]
    ))
 
 ;; ---------------------------
@@ -338,8 +365,10 @@
 
 (define (dre-equal? left right)
   (cond
-   [(not (dre? left))  #f]
-   [(not (dre? right)) #f]
+   [(not (dre? left))
+    #f]
+   [(not (dre? right))
+    #f]
    [(and (dre-and? left) (dre-and? right))
     (let ([l1 (dre-and-left left)]
           [l2 (dre-and-right left)]
@@ -362,47 +391,67 @@
     (every dre-equal?
            (dre-vector-list left)
            (dre-vector-list right))]
-   [else (equal? left right)]
+   [else
+    (equal? left right)]
    ))
 
 ;; ===========================
 
 (define (nu re)
   (cond
-   [(not (dre? re))    (error "not a regular expression: " re)]
-   [(dre-empty? re)    dre-empty]
-   [(dre-chars? re)    dre-null]
-   [(dre-null? re)     dre-null]
-   [(dre-concat? re)   (dre-and (nu (dre-concat-left re))
-                                (nu (dre-concat-right re)))]
-   [(dre-or? re)       (dre-or (nu (dre-or-left re))
-                               (nu (dre-or-right re)))]
-   [(dre-closure? re)  dre-empty]
-   [(dre-and? re)      (dre-and (nu (dre-and-left re))
-                                (nu (dre-and-right re)))]
-   [(dre-negation? re) (if (dre-equal? (nu (dre-negation-regex re)) dre-null)
-                           dre-empty
-                           dre-null)]
+   [(not (dre? re))
+    (error "not a regular expression: " re)]
+   [(dre-empty? re)
+    dre-empty]
+   [(dre-chars? re)
+    dre-null]
+   [(dre-null? re)
+    dre-null]
+   [(dre-concat? re)
+    (dre-and (nu (dre-concat-left re))
+             (nu (dre-concat-right re)))]
+   [(dre-or? re)
+    (dre-or (nu (dre-or-left re))
+            (nu (dre-or-right re)))]
+   [(dre-closure? re)
+    dre-empty]
+   [(dre-and? re)
+    (dre-and (nu (dre-and-left re))
+             (nu (dre-and-right re)))]
+   [(dre-negation? re)
+    (if (dre-null? (nu (dre-negation-regex re)))
+        dre-empty
+        dre-null)]
    ))
 
 (define (delta re ch)
   (cond
-   [(not (dre? re))    (error "not a regular expression: " re)]
-   [(dre-empty? re)    dre-null]
-   [(dre-null? re)     dre-null]
-   [(dre-chars? re)    (if (dre-chars-member? re ch) dre-empty dre-null)]
-   [(dre-concat? re)   (dre-or (dre-concat (delta (dre-concat-left re) ch)
-                                           (dre-concat-right re))
-                               (dre-concat (nu (dre-concat-left re))
-                                           (delta (dre-concat-right re) ch)))]
-   [(dre-closure? re)  (dre-concat (delta (dre-closure-regex re) ch) re)]
-   [(dre-or? re)       (dre-or (delta (dre-or-left re) ch)
-                               (delta (dre-or-right re) ch))]
-   [(dre-and? re)      (dre-and (delta (dre-and-left re) ch)
-                                (delta (dre-and-right re) ch))]
-   [(dre-negation? re) (dre-negation (delta (dre-negation-regex re) ch))]
-   [(dre-vector? re)   (dre-vector (map (lambda (r) (delta r ch))
-                                        (dre-vector-list re)))]
+   [(not (dre? re))
+    (error "not a regular expression: " re)]
+   [(dre-empty? re)
+    dre-null]
+   [(dre-null? re)
+    dre-null]
+   [(dre-chars? re)
+    (if (dre-chars-member? re ch) dre-empty dre-null)]
+   [(dre-concat? re)
+    (dre-or (dre-concat (delta (dre-concat-left re) ch)
+                        (dre-concat-right re))
+            (dre-concat (nu (dre-concat-left re))
+                        (delta (dre-concat-right re) ch)))]
+   [(dre-closure? re)
+    (dre-concat (delta (dre-closure-regex re) ch) re)]
+   [(dre-or? re)
+    (dre-or (delta (dre-or-left re) ch)
+            (delta (dre-or-right re) ch))]
+   [(dre-and? re)
+    (dre-and (delta (dre-and-left re) ch)
+             (delta (dre-and-right re) ch))]
+   [(dre-negation? re)
+    (dre-negation (delta (dre-negation-regex re) ch))]
+   [(dre-vector? re)
+    (dre-vector (map (lambda (r) (delta r ch))
+                     (dre-vector-list re)))]
    ))
 
 (define (dre-match-list? re list)
@@ -453,7 +502,8 @@
          [(and (more) (char=? (peek) #\|))
           (eat #\|)
           (dre-or trm (regex))]
-         [else trm]
+         [else
+          trm]
          )))
 
     (define (term)
@@ -462,7 +512,8 @@
          [(and (more) (and (not (char=? (peek) #\)))
                            (not (char=? (peek) #\|))))
           (loop (dre-concat fact (factor)))]
-         [else fact]
+         [else
+          fact]
          )))
 
     (define (factor)
@@ -471,7 +522,8 @@
          [(and (more) (char=? (peek) #\*))
           (eat #\*)
           (loop (dre-closure b))]
-         [else b]
+         [else
+          b]
          )))
 
     (define (base)
@@ -489,7 +541,7 @@
           (eat #\])
           s)]
        [(char=? (peek) #\.)
-        ;; any character
+        ;; any character except newline
         (eat #\.)
         (dre-chars-neg '(#\newline))]
        [else
@@ -542,23 +594,34 @@
 
 (define (C re)
   (cond
-   [(dre-empty? re)    (set dre-chars-sigma)]
-   [(dre-chars? re)    (let ([elts (set-elts (dre-chars-set re))])
-                         (set (dre-chars elts) (dre-chars-neg elts)))]
-   [(dre-concat? re)   (let ([r (dre-concat-left re)]
-                             [s (dre-concat-right re)])
-                         (if (dre-empty? (nu r))
-                             (C-hat (C r) (C s))
-                             (C r)))]
-   [(dre-or? re)       (C-hat (C (dre-or-left re)) (C (dre-or-right re)))]
-   [(dre-and? re)      (C-hat (C (dre-and-left re)) (C (dre-and-right re)))]
-   [(dre-closure? re)  (C (dre-closure-regex re))]
-   [(dre-negation? re) (C (dre-negation-regex re))]
-   [(dre-null? re)     (set dre-chars-sigma)]
-   [(dre-vector? re)   (fold C-hat
-                             (set dre-chars-sigma)
-                             (map C (dre-vector-list re)))]
-   [else (error "unhelpful regular expression:" re)]
+   [(dre-empty? re)
+    (set dre-chars-sigma)]
+   [(dre-chars? re)
+    (let ([elts (set-elts (dre-chars-set re))])
+      (set (dre-chars elts)
+           (dre-chars-neg elts)))]
+   [(dre-concat? re)
+    (let ([r (dre-concat-left re)]
+          [s (dre-concat-right re)])
+      (if (dre-empty? (nu r))
+          (C-hat (C r) (C s))
+          (C r)))]
+   [(dre-or? re)
+    (C-hat (C (dre-or-left re)) (C (dre-or-right re)))]
+   [(dre-and? re)
+    (C-hat (C (dre-and-left re)) (C (dre-and-right re)))]
+   [(dre-closure? re)
+    (C (dre-closure-regex re))]
+   [(dre-negation? re)
+    (C (dre-negation-regex re))]
+   [(dre-null? re)
+    (set dre-chars-sigma)]
+   [(dre-vector? re)
+    (fold C-hat
+          (set dre-chars-sigma)
+          (map C (dre-vector-list re)))]
+   [else
+    (error "unhelpful regular expression:" re)]
    ))
 
 (define-record-type dre-transition-t    ; <state, input, state'> transition
@@ -664,4 +727,3 @@
     (newline)
     (display-transitions (set-elts (dre-machine-transitions machine)))]
    ))
-
