@@ -1,11 +1,16 @@
 ;;; Derivatives of Regular Expressions
 
 ;;; A regular expression matcher based on regular expression derivatives. This
-;;; is based loosely on Matt Might's regular expression derivative work.
+;;; is based loosely on Matt Might's regular expression derivative work[1], and
+;;; the paper "Regular-expression derivatives reexamined" by Scott Owens, John
+;;; Reppy, and Aaron Turon[2], plus some additional help from Might's regex
+;;; parser[3].
 
 ;;; [1] http://matt.might.net/articles/implementation-of-regular-expression-matching-in-scheme-with-derivatives/
 
 ;;; [2] http://www.ccs.neu.edu/home/turon/re-deriv.pdf
+
+;;; [3] http://matt.might.net/articles/parsing-regex-with-recursive-descent/
 
 (use-modules (srfi srfi-1))             ; Lists: fold, etc.
 (use-modules (srfi srfi-9))             ; Record types
@@ -91,7 +96,7 @@
  (lambda (record port)
    (display "∅" port)))
 
-(define dre-null (dre-null-raw))
+(define dre-null (dre-null-raw))        ; Uninteresting value; use a constant
 
 ;; ---------------------------
 
@@ -342,7 +347,7 @@
 
 ;; ---------------------------
 
-(define-record-type dre-vector-t        ; A vector of DFAs
+(define-record-type dre-vector-t        ; A vector of regexs
   (dre-vector v) dre-vector?
   (v dre-vector-list))
 
@@ -397,75 +402,10 @@
 
 ;; ===========================
 
-(define (nu re)
-  (cond
-   [(not (dre? re))
-    (error "not a regular expression: " re)]
-   [(dre-empty? re)
-    dre-empty]
-   [(dre-chars? re)
-    dre-null]
-   [(dre-null? re)
-    dre-null]
-   [(dre-concat? re)
-    (dre-and (nu (dre-concat-left re))
-             (nu (dre-concat-right re)))]
-   [(dre-or? re)
-    (dre-or (nu (dre-or-left re))
-            (nu (dre-or-right re)))]
-   [(dre-closure? re)
-    dre-empty]
-   [(dre-and? re)
-    (dre-and (nu (dre-and-left re))
-             (nu (dre-and-right re)))]
-   [(dre-negation? re)
-    (if (dre-null? (nu (dre-negation-regex re)))
-        dre-empty
-        dre-null)]
-   ))
-
-(define (delta re ch)
-  (cond
-   [(not (dre? re))
-    (error "not a regular expression: " re)]
-   [(dre-empty? re)
-    dre-null]
-   [(dre-null? re)
-    dre-null]
-   [(dre-chars? re)
-    (if (dre-chars-member? re ch) dre-empty dre-null)]
-   [(dre-concat? re)
-    (dre-or (dre-concat (delta (dre-concat-left re) ch)
-                        (dre-concat-right re))
-            (dre-concat (nu (dre-concat-left re))
-                        (delta (dre-concat-right re) ch)))]
-   [(dre-closure? re)
-    (dre-concat (delta (dre-closure-regex re) ch) re)]
-   [(dre-or? re)
-    (dre-or (delta (dre-or-left re) ch)
-            (delta (dre-or-right re) ch))]
-   [(dre-and? re)
-    (dre-and (delta (dre-and-left re) ch)
-             (delta (dre-and-right re) ch))]
-   [(dre-negation? re)
-    (dre-negation (delta (dre-negation-regex re) ch))]
-   [(dre-vector? re)
-    (dre-vector (map (lambda (r) (delta r ch))
-                     (dre-vector-list re)))]
-   ))
-
-(define (dre-match-list? re list)
-  (cond
-   [(null? list) (dre-empty? (nu re))]
-   [else         (dre-match-list? (delta re (car list)) (cdr list))]
-   ))
-
-(define (dre-match? re str) (dre-match-list? re (string->list str)))
-
-;; ===========================
-
 ;;; http://matt.might.net/articles/parsing-regex-with-recursive-descent/
 
+;; Original grammar:
+;;
 ;; <regex> ::= <term> '|' <regex>
 ;;           | <term>
 ;;
@@ -585,9 +525,82 @@
 
 ;; ===========================
 
+(define (nu re)
+  (cond
+   [(not (dre? re))
+    (error "not a regular expression: " re)]
+   [(dre-empty? re)
+    dre-empty]
+   [(dre-chars? re)
+    dre-null]
+   [(dre-null? re)
+    dre-null]
+   [(dre-concat? re)
+    (dre-and (nu (dre-concat-left re))
+             (nu (dre-concat-right re)))]
+   [(dre-or? re)
+    (dre-or (nu (dre-or-left re))
+            (nu (dre-or-right re)))]
+   [(dre-closure? re)
+    dre-empty]
+   [(dre-and? re)
+    (dre-and (nu (dre-and-left re))
+             (nu (dre-and-right re)))]
+   [(dre-negation? re)
+    (if (dre-null? (nu (dre-negation-regex re)))
+        dre-empty
+        dre-null)]
+   [(dre-vector? re)
+    (error "not implemented: nu for:" re)]
+   ))
+
+(define (delta re ch)
+  (cond
+   [(not (dre? re))
+    (error "not a regular expression: " re)]
+   [(dre-empty? re)
+    dre-null]
+   [(dre-null? re)
+    dre-null]
+   [(dre-chars? re)
+    (if (dre-chars-member? re ch) dre-empty dre-null)]
+   [(dre-concat? re)
+    (dre-or (dre-concat (delta (dre-concat-left re) ch)
+                        (dre-concat-right re))
+            (dre-concat (nu (dre-concat-left re))
+                        (delta (dre-concat-right re) ch)))]
+   [(dre-closure? re)
+    (dre-concat (delta (dre-closure-regex re) ch) re)]
+   [(dre-or? re)
+    (dre-or (delta (dre-or-left re) ch)
+            (delta (dre-or-right re) ch))]
+   [(dre-and? re)
+    (dre-and (delta (dre-and-left re) ch)
+             (delta (dre-and-right re) ch))]
+   [(dre-negation? re)
+    (dre-negation (delta (dre-negation-regex re) ch))]
+   [(dre-vector? re)
+    (dre-vector (map (lambda (r) (delta r ch))
+                     (dre-vector-list re)))]
+   ))
+
+;; ---------------------------
+
+(define (dre-match-list? re list)
+  (cond
+   [(null? list) (dre-empty? (nu re))]
+   [else         (dre-match-list? (delta re (car list)) (cdr list))]
+   ))
+
+(define (dre-match? re str) (dre-match-list? re (string->list str)))
+
+;; ===========================
+
 ;;; Section 4.2 Computing character set derivative classes
 
+
 (define (C-hat r s)
+  ;; pair-wise intersection of two sets of character
   (list->set (list-ec (:list elt-r (set-elts r))
                       (:list elt-s (set-elts s))
                       (dre-chars-intersection elt-r elt-s))))
