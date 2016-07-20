@@ -313,6 +313,12 @@
       (dre-negation-raw regex))
   )
 
+;; ---------------------------
+
+(define-record-type dre-vector-t        ; A vector of DFAs
+  (dre-vector v) dre-vector?
+  (v dre-vector-list))
+
 ;; ===========================
 
 (define (dre? re)
@@ -324,6 +330,7 @@
       (dre-closure? re)
       (dre-and? re)
       (dre-negation? re)
+      (dre-vector? re)
       ))
 
 ;; Section 4.1 of re-deriv. This assumes the regular expressions are in
@@ -351,6 +358,10 @@
                (dre-equal? l2 r2))
           (and (dre-equal? l1 r2)
                (dre-equal? l2 r1))))]
+   [(and (dre-vector? left) (dre-vector? right))
+    (every dre-equal?
+           (dre-vector-list left)
+           (dre-vector-list right))]
    [else (equal? left right)]
    ))
 
@@ -390,6 +401,8 @@
    [(dre-and? re)      (dre-and (delta (dre-and-left re) ch)
                                 (delta (dre-and-right re) ch))]
    [(dre-negation? re) (dre-negation (delta (dre-negation-regex re) ch))]
+   [(dre-vector? re)   (dre-vector (map (lambda (r) (delta r ch))
+                                        (dre-vector-list re)))]
    ))
 
 (define (dre-match-list? re list)
@@ -542,6 +555,9 @@
    [(dre-closure? re)  (C (dre-closure-regex re))]
    [(dre-negation? re) (C (dre-negation-regex re))]
    [(dre-null? re)     (set dre-chars-sigma)]
+   [(dre-vector? re)   (fold C-hat
+                             (set dre-chars-sigma)
+                             (map C (dre-vector-list re)))]
    [else (error "unhelpful regular expression:" re)]
    ))
 
@@ -649,52 +665,3 @@
     (display-transitions (set-elts (dre-machine-transitions machine)))]
    ))
 
-;; ===========================
-
-(define t (string->dre "ab(c|d)*"))
-(define u (dre->dfa t))
-(display-dfa u)
-
-;; ===========================
-
-(define-record-type dre-vector-t        ; A vector of DFAs
-  (dre-vector v) dre-vector?
-  (v dre-vector-list))
-
-(define (delta-vector v ch)
-  (dre-vector (map (lambda (r) (delta r ch)) (dre-vector-list v))))
-
-(define (Cv v)
-  (fold C-hat (set dre-chars-sigma) (map C (dre-vector-list v))))
-
-(define (dre-vector-equal? l r)
-  (every dre-equal? (dre-vector-list l) (dre-vector-list r)))
-
-(define (drev->dfav r)
-
-  (define (goto q S engine)
-    (let* ([Q (car engine)]
-           [d (cdr engine)]
-           [c (dre-chars-choice S)]
-           [qc (delta-vector (dre-state-regex q) c)]
-           [q' (set-find Q (lambda (q') (dre-vector-equal? (dre-state-regex q') qc)))])
-      (if q'
-          (cons Q (set-union d (set (dre-transition q S q'))))
-          (let ([q' (dre-state qc)])
-            (explore (set-union Q (set q'))
-                     (set-union d (set (dre-transition q S q')))
-                     q')) )))
-
-  (define (explore Q d q)
-    (fold (lambda (S engine) (goto q S engine))
-          (cons Q d)
-          (remove dre-chars-empty?
-                  (set-elts (Cv (dre-state-regex q))))))
-
-  (let* ([q0 (dre-state r)]
-         [engine (explore (set q0) (set) q0)]
-         [states (car engine)]
-         [transitions (cdr engine)]
-         [F '()])
-    (dre-machine states q0 F transitions)
-    ))
