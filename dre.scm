@@ -637,11 +637,47 @@
     (error "unhelpful regular expression:" re)]
    ))
 
+;; ---------------------------
+
+(define-record-type dre-state-t         ; A state in the machine
+  (dre-state-raw n re accept null) dre-state?
+  (n dre-state-number)
+  (re dre-state-regex)
+  (accept dre-state-accepting)
+  (null dre-state-null))
+
+(define dre-state
+  (let ([state-count 0])
+    (lambda (re)
+
+      (define (accepting re)
+        (cond
+         [(dre-vector? re) (map accepting (dre-vector-list re))]
+         [else (dre-empty? (nu re))] ))
+
+      (define (nulling re)
+        (cond
+         [(dre-vector? re)
+          (every (lambda (b) b) (map nulling (dre-vector-list re)))]
+         [else
+          (dre-null? re)] ))
+
+      (set! state-count (+ state-count 1))
+      (let* ([accept
+              (accepting re)]
+             [error-state
+              (nulling re)])
+        (dre-state-raw state-count re accept error-state)))))
+
+;; ---------------------------
+
 (define-record-type dre-transition-t    ; <state, input, state'> transition
   (dre-transition state input state') dre-transition?
   (state dre-transition-origin)
   (input dre-transition-input)
   (state' dre-transition-destination))
+
+;; ---------------------------
 
 (define-record-type dre-machine-t       ; Finite state machine
   (dre-machine states start terminating transitions) dre-machine?
@@ -650,16 +686,7 @@
   (terminating dre-machine-terminating)
   (transitions dre-machine-transitions))
 
-(define-record-type dre-state-t         ; A state in the machine
-  (dre-state-raw n re) dre-state?
-  (n dre-state-number)
-  (re dre-state-regex))
-
-(define dre-state
-  (let ([state-count 0])
-    (lambda (re)
-      (set! state-count (+ state-count 1))
-      (dre-state-raw state-count re))))
+;; ---------------------------
 
 (define (dre->dfa r)
 
