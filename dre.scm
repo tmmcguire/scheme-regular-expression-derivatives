@@ -351,6 +351,11 @@
   (dre-vector v) dre-vector?
   (v dre-vector-list))
 
+(set-record-type-printer!
+ dre-vector-t
+ (lambda (record port)
+   (display (dre-vector-list record) port)))
+
 ;; ===========================
 
 (define (dre? re)
@@ -550,8 +555,6 @@
     (if (dre-null? (nu (dre-negation-regex re)))
         dre-empty
         dre-null)]
-   [(dre-vector? re)
-    (error "not implemented: nu for:" re)]
    ))
 
 (define (delta re ch)
@@ -646,6 +649,21 @@
   (accept dre-state-accepting)
   (null dre-state-null))
 
+(set-record-type-printer!
+ dre-state-t
+ (lambda (record port)
+   (display "State " port)
+   (display (dre-state-number record) port)
+   (newline port)
+   (display (dre-state-regex record) port)
+   (newline port)
+   (display "accepting: " port)
+   (display (dre-state-accepting record) port)
+   (newline port)
+   (display "null: " port)
+   (display (dre-state-null record) port)
+   (newline port)))
+
 (define dre-state
   (let ([state-count 0])
     (lambda (re)
@@ -677,6 +695,15 @@
   (input dre-transition-input)
   (state' dre-transition-destination))
 
+(set-record-type-printer!
+ dre-transition-t
+ (lambda (record port)
+   (display (dre-state-number (dre-transition-origin record)) port)
+   (display " -- " port)
+   (display (dre-transition-input record) port)
+   (display " -> " port)
+   (display (dre-state-number (dre-transition-destination record)) port)))
+
 ;; ---------------------------
 
 (define-record-type dre-machine-t       ; Finite state machine
@@ -685,6 +712,30 @@
   (start dre-machine-start)
   (terminating dre-machine-terminating)
   (transitions dre-machine-transitions))
+
+(define (dre-transitions-for machine state)
+  (let ([state-num (dre-state-number state)])
+    (remove (lambda (trans)
+              (not (eq? state-num
+                        (dre-state-number (dre-transition-origin trans)))))
+            (set-elts (dre-machine-transitions machine)))))
+
+(set-record-type-printer!
+ dre-machine-t
+ (lambda (record port)
+   (display "Start: " port)
+   (display (dre-state-number (dre-machine-start record)) port)
+   (newline)
+   (let outer ([states (set-elts (dre-machine-states record))])
+     (unless (null? states)
+       (display (car states) port)
+       (let inner ([transs (dre-transitions-for record (car states))])
+         (unless (null? transs)
+           (display (car transs) port)
+           (newline port)
+           (inner (cdr transs))))
+       (newline port)
+       (outer (cdr states))))))
 
 ;; ---------------------------
 
@@ -718,52 +769,3 @@
                     (set-elts states))])
     (dre-machine states q0 F transitions)
     ))
-
-;; ===========================
-
-(define (display-dfa machine)
-
-  (define (display-state st)
-    (display (dre-state-number st)))
-
-  (define (display-terminating sts)
-    (if (null? sts)
-        '()
-        (begin (display-state (car sts))
-               (display " ")
-               (display-terminating (cdr sts)))))
-
-  (define (display-chars chs)
-    (if (dre-chars-pos? chs)
-        (display (set-elts (dre-chars-set chs)))
-        (begin (display "not ")
-               (display (set-elts (dre-chars-set chs))))))
-
-  (define (display-transition trans)
-    (display-state (dre-transition-origin trans))
-    (display " -- ")
-    (display-chars (dre-transition-input trans))
-    (display " -> ")
-    (display-state (dre-transition-destination trans))
-    )
-
-  (define (display-transitions trans)
-    (if (null? trans)
-        '()
-        (begin (display-transition (car trans))
-               (newline)
-               (display-transitions (cdr trans)))))
-
-  (cond
-   [(not (dre-machine? machine)) (error "not a DFA:" machine)]
-   [else
-    (display "Start: ")
-    (display-state (dre-machine-start machine))
-    (newline)
-    (display "Final: ")
-    (display-terminating (dre-machine-terminating machine))
-    (newline)
-    (display "Transitions:")
-    (newline)
-    (display-transitions (set-elts (dre-machine-transitions machine)))]
-   ))
