@@ -1,11 +1,21 @@
 ;;; The Earley Parsing Algorithm, Dustin Mitchell, 2001
 ;;;
 ;;; Practical Earley Parsing, John Aycock and R. Nigel Horspool, 2002.
+;;;
+;;; Earley Parsing Explained http://loup-vaillant.fr/tutorials/earley-parsing/
+;;;
+;;; (Finding nullable symbols) https://github.com/jeffreykegler/kollos/blob/master/notes/misc/loup2.md
 
 (use-modules (srfi srfi-1))             ; List library
 (use-modules (srfi srfi-9))             ; Record types
 
 ;;; --------------------------
+
+(define terminal?    symbol?)
+(define nonterminal? string?)
+
+(define terminal=? eq?)
+(define nonterminal=? string=?)
 
 (define-record-type rule-t
   (rule-raw name production) rule?
@@ -15,15 +25,9 @@
 (define (rule name production)
   (unless (and (string? name)
                (list? production)
-               (every (lambda (t) (or (string? t) (symbol? t))) production))
+               (every (lambda (t) (or (terminal? t) (nonterminal? t))) production))
     (error "bad rule:" name production))
   (rule-raw name production))
-
-(define terminal?    symbol?)
-(define nonterminal? string?)
-
-(define terminal=? eq?)
-(define nonterminal=? string=?)
 
 (define rule=? equal?)
 
@@ -36,34 +40,65 @@
   (unless (string? str) (error "bad rule-name:" str))
   (string=? (rule-name r) str))
 
+(define (rule-empty? r)
+  (null? (rule-production r)))
+
 (define (rule-term r n)
   (unless (rule? r) (error "not a rule:" r))
   (if (< n (rule-length r))
       (list-ref (rule-production r) n)
       (error "term out of range:" r n)))
 
+(define (rule-nonterminals r)
+  (filter nonterminal? (rule-production r)))
+
+(define (rule-contains? r nonterm)
+  (find (lambda (p) (nonterminal=? nonterm p)) (rule-nonterminals r)))
+
+;;; --------------------------
+
+(define (nullable grammar)
+  (let* ([initial (map rule-name (filter rule-empty? grammar))])
+    (let loop ([nbl initial]
+               [work initial])
+      (if (null? work)
+          nbl
+          (let* ([sym (car work)]
+                 [nullable? (lambda (s) (member s nbl))]
+                 ;; work-rules = rules containing sym in RHS
+                 [work-rules (filter (lambda (r) (rule-contains? r sym)) grammar)]
+                 ;; poss = names of work-rules whose LHS are not known to be
+                 ;; nullable, and whose RHS are all nullable; i.e. a new
+                 ;; nullable symbol.
+                 [poss (map rule-names
+                            (filter (lambda (r)
+                                      (and (not (nullable? (rule-name r)))
+                                           (every nullable? (rule-nonterminals r))))
+                                    work-rules))])
+            (loop (append nbl poss) (append (cdr work) poss)))))))
+
 ;;; --------------------------
 
 ;;; An Earley item
 (define-record-type item-t
-  (item-raw rule pos start trees) item?
+  (item-raw rule pos start tree) item?
   (rule  item-rule)
   (pos   item-pos)
   (start item-start)
-  (trees item-trees item-trees!))
+  (tree item-tree item-tree!))
 
-(define (item rule n start trees)
+(define (item rule n start tree)
   (unless (and (rule? rule)
                (number? n)
                (state? start))
     (error "bad item:" rule start))
-  (item-raw rule n start trees))
+  (item-raw rule n start tree))
 
 (define (item=? st1 st2)
   (and (rule=? (item-rule st1) (item-rule st2))
        (= (item-pos st1) (item-pos st2))
        (state=? (item-start st1) (item-start st2))
-       (equal? (item-trees st1) (item-trees st2))))
+       (equal? (item-tree st1) (item-tree st2))))
 
 (define (item-name st)
   (unless (item? st) (error "not a item:" st))
@@ -95,7 +130,7 @@
 
 ;; (define (append-tree! st tre)
 ;;   (unless (item? st) (error "bad item:" st))
-;;   (item-trees! st (append (item-trees st) (list tre))))
+;;   (item-tree! st (append (item-tree st) (list tre))))
 
 ;;; --------------------------
 
@@ -153,7 +188,7 @@
     (map (lambda (s) (item (item-rule s)
                             (+ (item-pos s) 1)
                             (item-start s)
-                            (append (item-trees s) (list (list name (item-trees st))))))
+                            (append (item-tree s) (list (list name (item-tree st))))))
          (filter (lambda (s) (and (item-nonterminal? s)
                                   (nonterminal=? (next s) name))) itemsp))))
 
@@ -181,7 +216,7 @@
     (for-each (lambda (s) (expand! grammar ssn (item (item-rule s)
                                                      (+ (item-pos s) 1)
                                                      (item-start s)
-                                                     (append (item-trees s) (list trm)))))
+                                                     (append (item-tree s) (list trm)))))
               matches)
     ssn))
 
@@ -221,3 +256,9 @@
                   (rule "T" '("F"))
                   (rule "T" '("T" * "T"))
                   (rule "F" '(a))))
+
+;; Grammar with empty rules
+(define nul (list (rule "S" '("A" "A" "A" "A"))
+                  (rule "A" '(a))
+                  (rule "A" '("E"))
+                  (rule "E" '())))
