@@ -1,4 +1,6 @@
 ;;; The Earley Parsing Algorithm, Dustin Mitchell, 2001
+;;;
+;;; Practical Earley Parsing, John Aycock and R. Nigel Horspool, 2002.
 
 (use-modules (srfi srfi-1))             ; List library
 (use-modules (srfi srfi-9))             ; Record types
@@ -42,83 +44,84 @@
 
 ;;; --------------------------
 
-(define-record-type state-t
-  (state-raw rule pos start trees) state?
-  (rule  state-rule)
-  (pos   state-pos)
-  (start state-start)
-  (trees state-trees state-trees!))
+;;; An Earley item
+(define-record-type item-t
+  (item-raw rule pos start trees) item?
+  (rule  item-rule)
+  (pos   item-pos)
+  (start item-start)
+  (trees item-trees item-trees!))
 
-(define (state rule n start trees)
+(define (item rule n start trees)
   (unless (and (rule? rule)
                (number? n)
-               (state-set? start))
-    (error "bad state:" rule start))
-  (state-raw rule n start trees))
+               (state? start))
+    (error "bad item:" rule start))
+  (item-raw rule n start trees))
 
-(define (state=? st1 st2)
-  (and (rule=? (state-rule st1) (state-rule st2))
-       (= (state-pos st1) (state-pos st2))
-       (state-set=? (state-start st1) (state-start st2))
-       (equal? (state-trees st1) (state-trees st2))))
+(define (item=? st1 st2)
+  (and (rule=? (item-rule st1) (item-rule st2))
+       (= (item-pos st1) (item-pos st2))
+       (state=? (item-start st1) (item-start st2))
+       (equal? (item-trees st1) (item-trees st2))))
 
-(define (state-name st)
-  (unless (state? st) (error "not a state:" st))
-  (rule-name (state-rule st)))
+(define (item-name st)
+  (unless (item? st) (error "not a item:" st))
+  (rule-name (item-rule st)))
 
-(define (state-named? st str)
-  (unless (state? st) (error "not a state:" st))
-  (rule-named? (state-rule st) str))
+(define (item-named? st str)
+  (unless (item? st) (error "not a item:" st))
+  (rule-named? (item-rule st) str))
 
 (define (next st)
-  (unless (state? st) (error "not a state:" st))
-  (if (state-final? st)
+  (unless (item? st) (error "not a item:" st))
+  (if (item-final? st)
       (error "cannot get next symbol:" st)
-      (rule-term (state-rule st) (state-pos st))))
+      (rule-term (item-rule st) (item-pos st))))
 
-(define (state-final? st)
-  (unless (state? st) (error "not a state:" st))
-  (>= (state-pos st) (rule-length (state-rule st))))
+(define (item-final? st)
+  (unless (item? st) (error "not a item:" st))
+  (>= (item-pos st) (rule-length (item-rule st))))
 
-(define (state-terminal? st)
-  (and (state? st)
-       (not (state-final? st))
+(define (item-terminal? st)
+  (and (item? st)
+       (not (item-final? st))
        (terminal? (next st))))
 
-(define (state-nonterminal? st)
-  (and (state? st)
-       (not (state-final? st))
+(define (item-nonterminal? st)
+  (and (item? st)
+       (not (item-final? st))
        (nonterminal? (next st))))
 
 ;; (define (append-tree! st tre)
-;;   (unless (state? st) (error "bad state:" st))
-;;   (state-trees! st (append (state-trees st) (list tre))))
+;;   (unless (item? st) (error "bad item:" st))
+;;   (item-trees! st (append (item-trees st) (list tre))))
 
 ;;; --------------------------
 
-(define-record-type state-set-t
-  (state-set-raw id st-set) state-set?
-  (id state-set-id)
-  (st-set state-set-states state-set-states!))
+(define-record-type state-t
+  (state-raw id item-set) state?
+  (id state-id)
+  (item-set state-items state-items!))
 
-(define state-set
+(define state
   (let ([ctr 0])
     (lambda sts
-      (unless (every state? sts) (error "bad state-set:" sts))
+      (unless (every item? sts) (error "bad state:" sts))
       (set! ctr (+ ctr 1))
-      (state-set-raw ctr sts))))
+      (state-raw ctr sts))))
 
-(define (state-set=? ss1 ss2)
-  (= (state-set-id ss1) (state-set-id ss2)))
+(define (state=? ss1 ss2)
+  (= (state-id ss1) (state-id ss2)))
 
-(define (state-set-empty? ss)
-  (null? (state-set-states ss)))
+(define (state-empty? ss)
+  (null? (state-items ss)))
 
-(define (append-state! ss st)
-  (unless (and (state-set? ss)
-               (state? st))
-    (error "cannot append state:" ss st))
-  (state-set-states! ss (append (state-set-states ss) (list st))))
+(define (append-item! ss st)
+  (unless (and (state? ss)
+               (item? st))
+    (error "cannot append item:" ss st))
+  (state-items! ss (append (state-items ss) (list st))))
 
 ;;; --------------------------
 
@@ -126,59 +129,59 @@
 
 (define (predict grammar ss st)
   ;; If st is nonterminal, and its next symbol is N, then for each rule <N ->
-  ;; alpha> in the grammar, add the state <N -ss-> .alpha> to ss.
+  ;; alpha> in the grammar, add the item <N -ss-> .alpha> to ss.
   ;;
-  ;; Create each new state with an empty list.
+  ;; Create each new item with an empty list.
   (unless (every rule? grammar) (error "bad grammar:" grammar))
-  (unless (state-set? ss) (error "bad state-set:" ss))
-  (unless (state-nonterminal? st) (error "bad state:" st))
+  (unless (state? ss) (error "bad state:" ss))
+  (unless (item-nonterminal? st) (error "bad item:" st))
   (let ([nxt (next st)])
-    (map (lambda (r) (state r 0 ss '()))
+    (map (lambda (r) (item r 0 ss '()))
          (filter (lambda (r) (rule-named? r nxt)) grammar))))
 
 (define (complete st)
-  ;; If st in final, then for each 'parent' state in (state-start st) with the
-  ;; dot immediately preceeding N, add a similar state to [this state-set] with
+  ;; If st in final, then for each 'parent' item in (item-start st) with the
+  ;; dot immediately preceeding N, add a similar item to [this state] with
   ;; the dot moved to the right.
   ;;
-  ;; Each new state carries a copy of the parent state's list, to which is
+  ;; Each new item carries a copy of the parent item's list, to which is
   ;; appended the list for s as a single element.
-  (unless (state-final? st) (error "bad state:" st))
-  (let* ([name (state-name st)]
-         [ssp (state-start st)]
-         [statesp (state-set-states ssp)])
-    (map (lambda (s) (state (state-rule s)
-                            (+ (state-pos s) 1)
-                            (state-start s)
-                            (append (state-trees s) (list (list name (state-trees st))))))
-         (filter (lambda (s) (and (state-nonterminal? s)
-                                  (nonterminal=? (next s) name))) statesp))))
+  (unless (item-final? st) (error "bad item:" st))
+  (let* ([name (item-name st)]
+         [ssp (item-start st)]
+         [itemsp (state-items ssp)])
+    (map (lambda (s) (item (item-rule s)
+                            (+ (item-pos s) 1)
+                            (item-start s)
+                            (append (item-trees s) (list (list name (item-trees st))))))
+         (filter (lambda (s) (and (item-nonterminal? s)
+                                  (nonterminal=? (next s) name))) itemsp))))
 
 (define (predict/complete grammar ss st)
-  (cond [(state-nonterminal? st) (predict grammar ss st)]
-        [(state-final? st)       (complete st)]
+  (cond [(item-nonterminal? st) (predict grammar ss st)]
+        [(item-final? st)       (complete st)]
         [else                    '()]))
 
 (define (expand! grammar ss st)
-  (unless (find (lambda (s) (state=? st s)) (state-set-states ss))
-    (append-state! ss st)
+  (unless (find (lambda (s) (item=? st s)) (state-items ss))
+    (append-item! ss st)
     (for-each (lambda (s) (expand! grammar ss s)) (predict/complete grammar ss st))
     ss))
 
 (define (scan grammar ss trm)
-  ;; For all s in state-set ss, if s is terminal and its next symbol is trm,
-  ;; then create a new state-set ssn and add a copy of s to ssn with the dot
+  ;; For all s in state ss, if s is terminal and its next symbol is trm,
+  ;; then create a new state ssn and add a copy of s to ssn with the dot
   ;; moved one symbol to the right.
   ;;
-  ;; Append trm to the list for the new state.
-  (let ([matches (filter (lambda (s) (and (state-terminal? s)
+  ;; Append trm to the list for the new item.
+  (let ([matches (filter (lambda (s) (and (item-terminal? s)
                                           (terminal=? (next s) trm)))
-                         (state-set-states ss))]
-        [ssn (state-set)])
-    (for-each (lambda (s) (expand! grammar ssn (state (state-rule s)
-                                                      (+ (state-pos s) 1)
-                                                      (state-start s)
-                                                      (append (state-trees s) (list trm)))))
+                         (state-items ss))]
+        [ssn (state)])
+    (for-each (lambda (s) (expand! grammar ssn (item (item-rule s)
+                                                     (+ (item-pos s) 1)
+                                                     (item-start s)
+                                                     (append (item-trees s) (list trm)))))
               matches)
     ssn))
 
@@ -187,9 +190,9 @@
                (string? start-symbol))
     (error "bad grammar:" grammar start-symbol))
   (unless (every terminal? input) "bad input:" input)
-  (let* ([ss0 (state-set)]
+  (let* ([ss0 (state)]
          [r0  (rule GAMMA (list start-symbol 'END))]
-         [s0  (state r0 0 ss0 '())])
+         [s0  (item r0 0 ss0 '())])
     (expand! grammar ss0 s0)
     (let loop ([current ss0]
                [in      input])
@@ -197,6 +200,7 @@
           (scan grammar current 'END)
           (begin
             (loop (scan grammar current (car in)) (cdr in)))))))
+(define recognize parse)
 
 ;;; --------------------------
 
