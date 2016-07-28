@@ -707,10 +707,9 @@
 ;; ---------------------------
 
 (define-record-type dre-machine-t       ; Finite state machine
-  (dre-machine states start terminating transitions) dre-machine?
+  (dre-machine states start transitions) dre-machine?
   (states dre-machine-states)
   (start dre-machine-start)
-  (terminating dre-machine-terminating)
   (transitions dre-machine-transitions))
 
 (define (dre-transitions-for machine state)
@@ -763,9 +762,6 @@
   (let* ([q0 (dre-state r)]
          [engine (explore (set q0) (set) q0)]
          [states (car engine)]
-         [transitions (cdr engine)]
-         [F (remove (lambda (q)
-                      (not (dre-empty? (nu (dre-state-regex q)))))
-                    (set-elts states))])
-    (dre-machine states q0 F transitions)
+         [transitions (cdr engine)])
+    (dre-machine states q0 transitions)
     ))
