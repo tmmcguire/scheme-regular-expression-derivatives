@@ -22,6 +22,20 @@
   (name rule-name)
   (production rule-production))
 
+;;; An Earley item
+(define-record-type item-t
+  (item-raw rule pos start tree) item?
+  (rule  item-rule)
+  (pos   item-pos)
+  (start item-start)
+  (tree item-tree item-tree!))
+
+;;; The state of an Earley parse: a set of items
+(define-record-type state-t
+  (state-raw id item-set) state?
+  (id state-id)
+  (item-set state-items state-items!))
+
 (define (rule name production)
   (unless (and (string? name)
                (list? production)
@@ -79,14 +93,6 @@
 
 ;;; --------------------------
 
-;;; An Earley item
-(define-record-type item-t
-  (item-raw rule pos start tree) item?
-  (rule  item-rule)
-  (pos   item-pos)
-  (start item-start)
-  (tree item-tree item-tree!))
-
 (define (item rule n start tree)
   (unless (and (rule? rule)
                (number? n)
@@ -130,11 +136,6 @@
 
 ;;; --------------------------
 
-(define-record-type state-t
-  (state-raw id item-set) state?
-  (id state-id)
-  (item-set state-items state-items!))
-
 (define state
   (let ([ctr 0])
     (lambda sts
@@ -160,6 +161,10 @@
 
 (define (parse grammar start-symbol input)
 
+  (define nulling (nullable grammar))
+
+  (define (nulling? nonterm) (member nonterm nulling))
+
   (define (predict ss st)
     ;; If st is nonterminal, and its next symbol is N, then for each rule <N ->
     ;; alpha> in the grammar, add the item <N -ss-> .alpha> to ss.
@@ -168,14 +173,22 @@
     (unless (every rule? grammar) (error "bad grammar:" grammar))
     (unless (state? ss) (error "bad state:" ss))
     (unless (item-nonterminal? st) (error "bad item:" st))
-    (let ([nxt (next st)])
-      (map (lambda (r) (item r 0 ss '()))
-           (filter (lambda (r) (rule-named? r nxt)) grammar))))
+    (let* ([nxt (next st)]
+           [predicted (map (lambda (r) (item r 0 ss '()))
+                           (filter (lambda (r) (rule-named? r nxt)) grammar))])
+      (if (nulling? nxt)
+          (cons (item (item-rule st)
+                      (+ (item-pos st) 1)
+                      (item-start st)
+                      (item-tree st))
+                predicted)
+          predicted)
+      ))
 
   (define (complete st)
     ;; If st in final, then for each 'parent' item in (item-start st) with the
-    ;; dot immediately preceeding N, add a similar item to [this state] with
-    ;; the dot moved to the right.
+    ;; dot immediately preceeding N, add a similar item to [this state] with the
+    ;; dot moved to the right.
     ;;
     ;; Each new item carries a copy of the parent item's list, to which is
     ;; appended the list for s as a single element.
@@ -186,7 +199,8 @@
       (map (lambda (s) (item (item-rule s)
                              (+ (item-pos s) 1)
                              (item-start s)
-                             (append (item-tree s) (list (list name (item-tree st))))))
+                             (append (item-tree s)
+                                     (list (list name (item-tree st))))))
            (filter (lambda (s) (and (item-nonterminal? s)
                                     (nonterminal=? (next s) name))) itemsp))))
 
@@ -201,22 +215,22 @@
       (for-each (lambda (s) (expand! ss s)) (predict/complete ss st))
       ss))
 
-  (define (scan ss trm)
-    ;; For all s in state ss, if s is terminal and its next symbol is trm,
-    ;; then create a new state ssn and add a copy of s to ssn with the dot
+  (define (scan old trm)
+    ;; For all s in state old, if s is terminal and its next symbol is trm,
+    ;; then create a new state new and add a copy of s to new with the dot
     ;; moved one symbol to the right.
     ;;
     ;; Append trm to the list for the new item.
     (let ([matches (filter (lambda (s) (and (item-terminal? s)
                                             (terminal=? (next s) trm)))
-                           (state-items ss))]
-          [ssn (state)])
-      (for-each (lambda (s) (expand! ssn (item (item-rule s)
+                           (state-items old))]
+          [new (state)])
+      (for-each (lambda (s) (expand! new (item (item-rule s)
                                                (+ (item-pos s) 1)
                                                (item-start s)
                                                (append (item-tree s) (list trm)))))
                 matches)
-      ssn))
+      new))
 
   (unless (and (every rule? grammar)
                (string? start-symbol))
@@ -228,10 +242,11 @@
     (expand! ss0 s0)
     (let loop ([current ss0]
                [in      input])
-      (if (null? in)
-          (scan current 'END)
-          (begin
-            (loop (scan current (car in)) (cdr in)))))))
+      (cond
+       [(state-empty? current) #f]
+       [(null? in) (scan current 'END)]
+       [else (loop (scan current (car in)) (cdr in))]))))
+
 (define recognize parse)
 
 ;;; --------------------------
