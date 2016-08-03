@@ -290,6 +290,11 @@
                    (rule "SYM"  '(a))
                    (rule "OP"   '(+))))
 
+(define aexp1 (parse aexp "EXPR" '(a)))
+(define aexp2 (parse aexp "EXPR" '(a + a)))
+(define aexp3 (parse aexp "EXPR" '(a + a + a)))
+(define aexp4 (parse aexp "EXPR" '(a + a + a + a)))
+
 ;; Ambiguous grammar
 (define amb (list (rule "E" '("T"))
                   (rule "E" '("E" + "E"))
@@ -297,11 +302,17 @@
                   (rule "T" '("T" * "T"))
                   (rule "F" '(a))))
 
+(define amb1 (parse amb "E" '(a)))
+(define amb2 (parse amb "E" '(a + a)))
+(define amb3 (parse amb "E" '(a + a + a)))
+
 ;; Grammar with empty rules
 (define nul (list (rule "S" '("A" "A" "A" "A"))
                   (rule "A" '(a))
                   (rule "A" '("E"))
                   (rule "E" '())))
+
+(define nul1 (parse nul "S" '(a)))
 
 ;; (define q (parse aexp "EXPR" '(a + a)))
 
