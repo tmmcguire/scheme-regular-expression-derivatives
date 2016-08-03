@@ -30,11 +30,10 @@
 
 ;;; An Earley item
 (define-record-type item-t
-  (item-raw rule pos start tree) item?
+  (item-raw rule pos start) item?
   (rule  item-rule)
   (pos   item-pos)
-  (start item-start)
-  (tree item-tree item-tree!))
+  (start item-start))
 
 ;;; The state of an Earley parse: a set of items
 (define-record-type state-t
@@ -101,18 +100,17 @@
 
 ;;; --------------------------
 
-(define (item rule n start tree)
+(define (item rule n start)
   (unless (and (rule? rule)
                (number? n)
                (state? start))
     (error "bad item:" rule start))
-  (item-raw rule n start tree))
+  (item-raw rule n start))
 
 (define (item=? st1 st2)
   (and (rule=? (item-rule st1) (item-rule st2))
        (= (item-pos st1) (item-pos st2))
-       (state=? (item-start st1) (item-start st2))
-       (equal? (item-tree st1) (item-tree st2))))
+       (state=? (item-start st1) (item-start st2))))
 
 (define (item-name st)
   (unless (item? st) (error "not a item:" st))
@@ -207,13 +205,12 @@
     (unless (state? ss) (error "bad state:" ss))
     (unless (item-nonterminal? st) (error "bad item:" st))
     (let* ([nxt (next st)]
-           [predicted (map (lambda (r) (item r 0 ss '()))
+           [predicted (map (lambda (r) (item r 0 ss))
                            (filter (lambda (r) (rule-named? r nxt)) grammar))])
       (if (nulling? nxt)
           (cons (item (item-rule st)
                       (+ (item-pos st) 1)
-                      (item-start st)
-                      (item-tree st))
+                      (item-start st))
                 predicted)
           predicted)
       ))
@@ -231,9 +228,7 @@
            [itemsp (state-items ssp)])
       (map (lambda (s) (item (item-rule s)
                              (+ (item-pos s) 1)
-                             (item-start s)
-                             (append (item-tree s)
-                                     (list (list name (item-tree st))))))
+                             (item-start s)))
            (filter (lambda (s) (and (item-nonterminal? s)
                                     (nonterminal=? (next s) name))) itemsp))))
 
@@ -260,8 +255,7 @@
           [new (state)])
       (for-each (lambda (s) (expand! new (item (item-rule s)
                                                (+ (item-pos s) 1)
-                                               (item-start s)
-                                               (append (item-tree s) (list trm)))))
+                                               (item-start s))))
                 matches)
       new))
 
@@ -272,7 +266,7 @@
   (set! state-ctr -1)
   (let* ([ss0 (state)]
          [r0  (rule GAMMA (list start-symbol))]
-         [s0  (item r0 0 ss0 '())])
+         [s0  (item r0 0 ss0)])
     (expand! ss0 s0)
     (let loop ([current ss0]
                [in      input])
