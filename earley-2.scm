@@ -107,38 +107,38 @@
     (error "bad item:" rule start))
   (item-raw rule n start))
 
-(define (item=? st1 st2)
-  (and (rule=? (item-rule st1) (item-rule st2))
-       (= (item-pos st1) (item-pos st2))
-       (state=? (item-start st1) (item-start st2))))
+(define (item=? it1 it2)
+  (and (rule=? (item-rule it1) (item-rule it2))
+       (= (item-pos it1) (item-pos it2))
+       (state=? (item-start it1) (item-start it2))))
 
-(define (item-name st)
-  (unless (item? st) (error "not a item:" st))
-  (rule-name (item-rule st)))
+(define (item-name it)
+  (unless (item? it) (error "not a item:" it))
+  (rule-name (item-rule it)))
 
-(define (item-named? st str)
-  (unless (item? st) (error "not a item:" st))
-  (rule-named? (item-rule st) str))
+(define (item-named? it str)
+  (unless (item? it) (error "not a item:" it))
+  (rule-named? (item-rule it) str))
 
-(define (next st)
-  (unless (item? st) (error "not a item:" st))
-  (if (item-final? st)
-      (error "cannot get next symbol:" st)
-      (rule-term (item-rule st) (item-pos st))))
+(define (next it)
+  (unless (item? it) (error "not a item:" it))
+  (if (item-final? it)
+      (error "cannot get next symbol:" it)
+      (rule-term (item-rule it) (item-pos it))))
 
-(define (item-final? st)
-  (unless (item? st) (error "not a item:" st))
-  (>= (item-pos st) (rule-length (item-rule st))))
+(define (item-final? it)
+  (unless (item? it) (error "not a item:" it))
+  (>= (item-pos it) (rule-length (item-rule it))))
 
-(define (item-terminal? st)
-  (and (item? st)
-       (not (item-final? st))
-       (terminal? (next st))))
+(define (item-terminal? it)
+  (and (item? it)
+       (not (item-final? it))
+       (terminal? (next it))))
 
-(define (item-nonterminal? st)
-  (and (item? st)
-       (not (item-final? st))
-       (nonterminal? (next st))))
+(define (item-nonterminal? it)
+  (and (item? it)
+       (not (item-final? it))
+       (nonterminal? (next it))))
 
 (set-record-type-printer!
  item-t
@@ -155,23 +155,22 @@
 
 (define state-ctr -1)
 
-(define state
-  (lambda sts
-    (unless (every item? sts) (error "bad state:" sts))
-    (set! state-ctr (+ state-ctr 1))
-    (state-raw state-ctr sts)))
+(define (state . its)
+  (unless (every item? its) (error "bad items:" its))
+  (set! state-ctr (+ state-ctr 1))
+  (state-raw state-ctr its))
 
-(define (state=? ss1 ss2)
-  (= (state-id ss1) (state-id ss2)))
+(define (state=? st1 st2)
+  (= (state-id st1) (state-id st2)))
 
-(define (state-empty? ss)
-  (null? (state-items ss)))
+(define (state-empty? st)
+  (null? (state-items st)))
 
-(define (append-item! ss st)
-  (unless (and (state? ss)
-               (item? st))
-    (error "cannot append item:" ss st))
-  (state-items! ss (append (state-items ss) (list st))))
+(define (append-item! st it)
+  (unless (and (state? st)
+               (item? it))
+    (error "cannot append item:" st it))
+  (state-items! st (append (state-items st) (list it))))
 
 (set-record-type-printer!
   state-t
@@ -196,35 +195,35 @@
 
   (define (nulling? nonterm) (member nonterm nulling))
 
-  (define (predict ss st)
-    ;; If st is nonterminal, and its next symbol is N, then for each rule <N ->
-    ;; alpha> in the grammar, add the item <N -ss-> .alpha> to ss.
+  (define (predict st it)
+    ;; If it is nonterminal, and its next symbol is N, then for each rule <N ->
+    ;; alpha> in the grammar, add the item <N -st-> .alpha> to st.
     ;;
     ;; Create each new item with an empty list.
     (unless (every rule? grammar) (error "bad grammar:" grammar))
-    (unless (state? ss) (error "bad state:" ss))
-    (unless (item-nonterminal? st) (error "bad item:" st))
-    (let* ([nxt (next st)]
-           [predicted (map (lambda (r) (item r 0 ss))
+    (unless (state? st) (error "bad state:" st))
+    (unless (item-nonterminal? it) (error "bad item:" it))
+    (let* ([nxt (next it)]
+           [predicted (map (lambda (r) (item r 0 st))
                            (filter (lambda (r) (rule-named? r nxt)) grammar))])
       (if (nulling? nxt)
-          (cons (item (item-rule st)
-                      (+ (item-pos st) 1)
-                      (item-start st))
+          (cons (item (item-rule it)
+                      (+ (item-pos it) 1)
+                      (item-start it))
                 predicted)
           predicted)
       ))
 
-  (define (complete st)
-    ;; If st in final, then for each 'parent' item in (item-start st) with the
+  (define (complete it)
+    ;; If it in final, then for each 'parent' item in (item-start it) with the
     ;; dot immediately preceeding N, add a similar item to [this state] with the
     ;; dot moved to the right.
     ;;
     ;; Each new item carries a copy of the parent item's list, to which is
     ;; appended the list for s as a single element.
-    (unless (item-final? st) (error "bad item:" st))
-    (let* ([name (item-name st)]
-           [ssp (item-start st)]
+    (unless (item-final? it) (error "bad item:" it))
+    (let* ([name (item-name it)]
+           [ssp (item-start it)]
            [itemsp (state-items ssp)])
       (map (lambda (s) (item (item-rule s)
                              (+ (item-pos s) 1)
@@ -232,16 +231,16 @@
            (filter (lambda (s) (and (item-nonterminal? s)
                                     (nonterminal=? (next s) name))) itemsp))))
 
-  (define (predict/complete ss st)
-    (cond [(item-nonterminal? st) (predict ss st)]
-          [(item-final? st)       (complete st)]
+  (define (predict/complete st it)
+    (cond [(item-nonterminal? it) (predict st it)]
+          [(item-final? it)       (complete it)]
           [else                    '()]))
 
-  (define (expand! ss st)
-    (unless (find (lambda (s) (item=? st s)) (state-items ss))
-      (append-item! ss st)
-      (for-each (lambda (s) (expand! ss s)) (predict/complete ss st))
-      ss))
+  (define (expand! st it)
+    (unless (find (lambda (s) (item=? it s)) (state-items st))
+      (append-item! st it)
+      (for-each (lambda (s) (expand! st s)) (predict/complete st it))
+      st))
 
   (define (scan old trm)
     ;; For all s in state old, if s is terminal and its next symbol is trm,
@@ -264,11 +263,11 @@
     (error "bad grammar:" grammar start-symbol))
   (unless (every terminal? input) "bad input:" input)
   (set! state-ctr -1)
-  (let* ([ss0 (state)]
+  (let* ([st0 (state)]
          [r0  (rule GAMMA (list start-symbol))]
-         [s0  (item r0 0 ss0)])
-    (expand! ss0 s0)
-    (let loop ([current ss0]
+         [s0  (item r0 0 st0)])
+    (expand! st0 s0)
+    (let loop ([current st0]
                [in      input])
       (cond
        [(state-empty? current) #f]
