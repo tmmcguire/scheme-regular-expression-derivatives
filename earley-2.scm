@@ -271,14 +271,14 @@
   (unless (every terminal? input) "bad input:" input)
   (set! state-ctr -1)
   (let* ([ss0 (state)]
-         [r0  (rule GAMMA (list start-symbol 'END))]
+         [r0  (rule GAMMA (list start-symbol))]
          [s0  (item r0 0 ss0 '())])
     (expand! ss0 s0)
     (let loop ([current ss0]
                [in      input])
       (cond
        [(state-empty? current) #f]
-       [(null? in) (scan current 'END)]
+       [(null? in) current]
        [else (loop (scan current (car in)) (cdr in))]))))
 
 (define recognize parse)
