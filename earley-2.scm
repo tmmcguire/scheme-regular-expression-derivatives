@@ -308,3 +308,33 @@
                   (rule "A" '(a))
                   (rule "A" '("E"))
                   (rule "E" '())))
+
+;; (define q (parse aexp "EXPR" '(a + a)))
+
+;; (define* (find-item state symbol #:key (completed #f) (starting-at 0))
+;;   (let ([pred (lambda (item)
+;;                 (and (item-named? item symbol)
+;;                      (if completed (item-final? item) #t)
+;;                      (equal? (state-id (item-start item)) starting-at)))])
+;;     (filter pred (state-items state))))
+
+;; (define (find-item pred state)
+;;   (filter pred (state-items state)))
+
+;; (define (item-name-p symbol)
+;;   (lambda (it) (item-named? it symbol)))
+
+;; (define (completed-p)
+;;   (lambda (it) (item-final? it)))
+
+;; (define (starting-at-p id)
+;;   (lambda (it) (= (state-id (item-start it)) id)))
+
+;; (define (and-p . preds)
+;;   (lambda (it)
+;;     (let loop ([p preds])
+;;       (if (null? p)
+;;           #t
+;;           (if ((car p) it)
+;;               (loop (cdr p))
+;;               #f)))))
