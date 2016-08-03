@@ -155,12 +155,13 @@
 
 ;;; --------------------------
 
+(define state-ctr -1)
+
 (define state
-  (let ([ctr 0])
-    (lambda sts
-      (unless (every item? sts) (error "bad state:" sts))
-      (set! ctr (+ ctr 1))
-      (state-raw ctr sts))))
+  (lambda sts
+    (unless (every item? sts) (error "bad state:" sts))
+    (set! state-ctr (+ state-ctr 1))
+    (state-raw state-ctr sts)))
 
 (define (state=? ss1 ss2)
   (= (state-id ss1) (state-id ss2)))
@@ -268,6 +269,7 @@
                (string? start-symbol))
     (error "bad grammar:" grammar start-symbol))
   (unless (every terminal? input) "bad input:" input)
+  (set! state-ctr -1)
   (let* ([ss0 (state)]
          [r0  (rule GAMMA (list start-symbol 'END))]
          [s0  (item r0 0 ss0 '())])
