@@ -8,6 +8,10 @@
 
 (use-modules (srfi srfi-1))             ; List library
 (use-modules (srfi srfi-9))             ; Record types
+(use-modules (srfi srfi-9 gnu))         ; Custom record printers
+
+(define (insert pos elt lst)
+  (append (take lst pos) (list elt) (drop lst pos)))
 
 ;;; --------------------------
 
@@ -16,6 +20,8 @@
 
 (define terminal=? eq?)
 (define nonterminal=? string=?)
+
+;;; --------------------------
 
 (define-record-type rule-t
   (rule-raw name production) rule?
@@ -35,6 +41,8 @@
   (state-raw id item-set) state?
   (id state-id)
   (item-set state-items state-items!))
+
+;;; --------------------------
 
 (define (rule name production)
   (unless (and (string? name)
@@ -134,6 +142,17 @@
        (not (item-final? st))
        (nonterminal? (next st))))
 
+(set-record-type-printer!
+ item-t
+ (lambda (rec port)
+   (let ([terms (rule-production (item-rule rec))])
+     (display (item-name rec) port)
+     (display " -> " port)
+     (display (insert (item-pos rec) "⚫" terms) port)
+     (display " (" port)
+     (display (state-id (item-start rec)) port)
+     (display ")" port))))
+
 ;;; --------------------------
 
 (define state
@@ -154,6 +173,19 @@
                (item? st))
     (error "cannot append item:" ss st))
   (state-items! ss (append (state-items ss) (list st))))
+
+(set-record-type-printer!
+  state-t
+  (lambda (rec port)
+    (display "--- " port)
+    (display (state-id rec) port)
+    (display " ---" port)
+    (newline port)
+    (let loop ([items (state-items rec)])
+      (unless (null? items)
+        (display (car items) port)
+        (newline port)
+        (loop (cdr items))))))
 
 ;;; --------------------------
 
