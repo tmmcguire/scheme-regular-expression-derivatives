@@ -30,16 +30,30 @@
 
 ;;; An Earley item
 (define-record-type item-t
-  (item-raw rule pos start) item?
-  (rule  item-rule)
-  (pos   item-pos)
-  (start item-start))
+  (item-raw rule pos start pred reduct) item?
+  (rule   item-rule)
+  (pos    item-pos)
+  (start  item-start)
+  (pred   item-pred)
+  (reduct item-reduct))
 
 ;;; The state of an Earley parse: a set of items
 (define-record-type state-t
   (state-raw id item-set) state?
   (id state-id)
   (item-set state-items state-items!))
+
+;;; SPPF predecessor pointers
+(define-record-type predecessor-t
+  (predecessor label dest) predecessor?
+  (label pred-label)
+  (dest pred-dest))
+
+;;; SPPF reduction pointers
+(define-record-type reduction-t
+  (reduction label dest) reduction?
+  (label reduct-label)
+  (dest reduct-dest))
 
 ;;; --------------------------
 
@@ -100,12 +114,14 @@
 
 ;;; --------------------------
 
-(define (item rule n start)
+(define (item rule n start pred reduct)
   (unless (and (rule? rule)
                (number? n)
-               (state? start))
-    (error "bad item:" rule start))
-  (item-raw rule n start))
+               (state? start)
+               (every predecessor? pred)
+               (every reduction? reduct))
+    (error "bad item:" rule n start pred reduct))
+  (item-raw rule n start pred reduct))
 
 (define (item=? it1 it2)
   (and (rule=? (item-rule it1) (item-rule it2))
@@ -149,7 +165,9 @@
      (display (insert (item-pos rec) "⚫" terms) port)
      (display " (" port)
      (display (state-id (item-start rec)) port)
-     (display ")" port))))
+     (display ")" port)
+     (display (item-pred rec) port)
+     (display (item-reduct rec) port))))
 
 ;;; --------------------------
 
@@ -204,12 +222,14 @@
     (unless (state? st) (error "bad state:" st))
     (unless (item-nonterminal? it) (error "bad item:" it))
     (let* ([nxt (next it)]
-           [predicted (map (lambda (r) (item r 0 st))
+           [predicted (map (lambda (r) (item r 0 st '() '()))
                            (filter (lambda (r) (rule-named? r nxt)) grammar))])
       (if (nulling? nxt)
           (cons (item (item-rule it)
                       (+ (item-pos it) 1)
-                      (item-start it))
+                      (item-start it)
+                      '()
+                      '())
                 predicted)
           predicted)
       ))
@@ -227,7 +247,11 @@
            [itemsp (state-items ssp)])
       (map (lambda (s) (item (item-rule s)
                              (+ (item-pos s) 1)
-                             (item-start s)))
+                             (item-start s)
+                             (if (> (item-pos s) 0)
+                                 (list (predecessor (state-id ssp) s))
+                                 '())
+                             (list (reduction (state-id ssp) st))))
            (filter (lambda (s) (and (item-nonterminal? s)
                                     (nonterminal=? (next s) name))) itemsp))))
 
@@ -248,13 +272,17 @@
     ;; moved one symbol to the right.
     ;;
     ;; Append trm to the list for the new item.
-    (let ([matches (filter (lambda (s) (and (item-terminal? s)
-                                            (terminal=? (next s) trm)))
-                           (state-items old))]
-          [new (state)])
+    (let* ([matches (filter (lambda (s) (and (item-terminal? s)
+                                             (terminal=? (next s) trm)))
+                            (state-items old))]
+           [preds (filter (lambda (i) (> (item-pos i) 0)) matches)]
+           [ptrs (map (lambda (p) (predecessor (state-id old) p)) preds)]
+           [new (state)])
       (for-each (lambda (s) (expand! new (item (item-rule s)
                                                (+ (item-pos s) 1)
-                                               (item-start s))))
+                                               (item-start s)
+                                               ptrs
+                                               '())))
                 matches)
       new))
 
@@ -265,7 +293,7 @@
   (set! state-ctr -1)
   (let* ([st0 (state)]
          [r0  (rule GAMMA (list start-symbol))]
-         [s0  (item r0 0 st0)])
+         [s0  (item r0 0 st0 '() '())])
     (expand! st0 s0)
     (let loop ([current st0]
                [in      input])
@@ -275,6 +303,30 @@
        [else (loop (scan current (car in)) (cdr in))]))))
 
 (define recognize parse)
+
+;;; --------------------------
+
+
+
+;;; SPPF notes---backpointer version
+
+;;; Set E0 to be the items (S -> . alpha, 0).  // initial state
+
+;;; For i > 0 initialize Ei by adding p = (A -> alpha ai . beta, j)
+;;; for each q = (A -> alpha . ai beta,j) in Ei-1 and, if alpha /= epsilon
+;;; creating a predecessor pointer labelled i-1 from q to p.
+;;;
+;;; // Hypothesis: switch p and q in last phrase.
+
+;;; Before initializing Ei+1 complete Ei as follows.
+;;; For each item (B -> gamma . D delta, k) in Ei and
+;;; each rule D -> rho, add (D -> . rho, i) to Ei.
+
+;;; For each item t = (B -> rho ., k) in Ei and each corresponding item
+;;; q = (D -> rho . B mu, h) in Ek, if there is no item
+;;; p = (d -> rho B . mu, h) in Ei, create one.
+;;; Add a reduction pointer labeled k from p to t and,
+;;; if rho /= epsilon, a predecessor pointer labeled k from p to q.
 
 ;;; --------------------------
 
