@@ -34,8 +34,8 @@
   (rule   item-rule)
   (pos    item-pos)
   (start  item-start)
-  (pred   item-pred)
-  (reduct item-reduct))
+  (pred   item-pred   item-pred!)
+  (reduct item-reduct item-reduct!))
 
 ;;; The state of an Earley parse: a set of items
 (define-record-type state-t
@@ -156,18 +156,38 @@
        (not (item-final? it))
        (nonterminal? (next it))))
 
+(define (item-append-preds! it preds)
+  (item-pred! it (append (item-pred it) preds)))
+
+(define (item-append-reducts! it reducts)
+  (item-reduct! it (append (item-reduct it) reducts)))
+
+(define (display-item-t rec port)
+  (let ([terms (rule-production (item-rule rec))])
+    (display (item-name rec) port)
+    (display " -> " port)
+    (display (insert (item-pos rec) "⚫" terms) port)
+    (display " (" port)
+    (display (state-id (item-start rec)) port)
+    (display ")" port) ))
+
+(define (display-ptr type lab dst port)
+  (display " -" port)
+  (display type port)
+  (display "-" port)
+  (display lab port)
+  (display "-> [" port)
+  (display-item-t dst port)
+  (display "]"))
+
 (set-record-type-printer!
  item-t
  (lambda (rec port)
-   (let ([terms (rule-production (item-rule rec))])
-     (display (item-name rec) port)
-     (display " -> " port)
-     (display (insert (item-pos rec) "⚫" terms) port)
-     (display " (" port)
-     (display (state-id (item-start rec)) port)
-     (display ")" port)
-     (display (item-pred rec) port)
-     (display (item-reduct rec) port))))
+   (let ([preds (item-pred rec)]
+         [reducts (item-reduct rec)])
+     (display-item-t rec port)
+     (map (lambda (r) (display-ptr "p" (pred-label r) (pred-dest r) port)) preds)
+     (map (lambda (r) (display-ptr "r" (reduct-label r) (reduct-dest r) port)) reducts))))
 
 ;;; --------------------------
 
@@ -251,7 +271,7 @@
                              (if (> (item-pos s) 0)
                                  (list (predecessor (state-id ssp) s))
                                  '())
-                             (list (reduction (state-id ssp) st))))
+                             (list (reduction (state-id ssp) it))))
            (filter (lambda (s) (and (item-nonterminal? s)
                                     (nonterminal=? (next s) name))) itemsp))))
 
@@ -261,9 +281,12 @@
           [else                    '()]))
 
   (define (expand! st it)
-    (unless (find (lambda (s) (item=? it s)) (state-items st))
-      (append-item! st it)
-      (for-each (lambda (s) (expand! st s)) (predict/complete st it))
+    (let ([existing (find (lambda (s) (item=? it s)) (state-items st))])
+      (if existing
+          (begin (item-append-preds! existing (item-pred it))
+                 (item-append-reducts! existing (item-reduct it)))
+          (begin (append-item! st it)
+                 (for-each (lambda (s) (expand! st s)) (predict/complete st it))))
       st))
 
   (define (scan old trm)
@@ -296,11 +319,14 @@
          [s0  (item r0 0 st0 '() '())])
     (expand! st0 s0)
     (let loop ([current st0]
-               [in      input])
+               [in      input]
+               [states  '()])
       (cond
        [(state-empty? current) #f]
-       [(null? in) current]
-       [else (loop (scan current (car in)) (cdr in))]))))
+       [(null? in) (append states (list current))]
+       [else (loop (scan current (car in))
+                   (cdr in)
+                   (append states (list current)))]))))
 
 (define recognize parse)
 
@@ -364,6 +390,12 @@
                   (rule "E" '())))
 
 (define nul1 (parse nul "S" '(a)))
+
+;; Grammar from SPPF
+(define ss (list (rule "S" '("S" "S"))
+                 (rule "S" '(b))))
+
+(define ss1 (parse ss "S" '(b b b)))
 
 ;; (define q (parse aexp "EXPR" '(a + a)))
 
