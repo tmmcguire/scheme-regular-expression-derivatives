@@ -63,7 +63,8 @@
 (define (rule name production)
   (unless (and (string? name)
                (list? production)
-               (every (lambda (t) (or (terminal? t) (nonterminal? t))) production))
+               (every (lambda (t) (or (terminal? t) (nonterminal? t)))
+                      production))
     (error "bad rule:" name production))
   (rule-raw name production))
 
@@ -79,6 +80,7 @@
   (string=? (rule-name r) str))
 
 (define (rule-empty? r)
+  (unless (rule? r) (error "not a rule:" r))
   (null? (rule-production r)))
 
 (define (rule-term r n)
@@ -88,9 +90,12 @@
       (error "term out of range:" r n)))
 
 (define (rule-nonterminals r)
+  (unless (rule? r) (error "not a rule:" r))
   (filter nonterminal? (rule-production r)))
 
 (define (rule-contains? r nonterm)
+  (unless (rule? r) (error "not a rule:" r))
+  (unless (nonterminal? nonterm) (error "not a nonterminal:" nonterm))
   (find (lambda (p) (nonterminal=? nonterm p)) (rule-nonterminals r)))
 
 ;;; --------------------------
@@ -103,16 +108,18 @@
           nbl
           (let* ([sym (car work)]
                  [nullable? (lambda (s) (member s nbl))]
+                 [missing-rule?
+                  (lambda (r) (and (not (nullable? (rule-name r)))
+                                   (every nullable? (rule-nonterminals r))))]
                  ;; work-rules = rules containing sym in RHS
-                 [work-rules (filter (lambda (r) (rule-contains? r sym)) grammar)]
-                 ;; poss = names of work-rules whose LHS are not known to be
-                 ;; nullable, and whose RHS are all nullable; i.e. a new
-                 ;; nullable symbol.
-                 [poss (map rule-name
-                            (filter (lambda (r)
-                                      (and (not (nullable? (rule-name r)))
-                                           (every nullable? (rule-nonterminals r))))
-                                    work-rules))])
+                 [work-rules
+                  (filter (lambda (r) (rule-contains? r sym)) grammar)]
+                 ;; missing-rules = rules whose LHS is not known to be nullable,
+                 ;; and whose RHS are all nullable; i.e. the LHS should be
+                 ;; nullable.
+                 [missing-rules (filter missing-rule? work-rules)]
+                 ;; poss = LHS names of missing-rules
+                 [poss (map rule-name missing-rules)])
             (loop (append nbl poss) (append (cdr work) poss)))))))
 
 ;;; --------------------------
@@ -143,13 +150,13 @@
   (unless (item? it) (error "not a item:" it))
   (>= (item-pos it) (rule-length (item-rule it))))
 
-(define (next it)
+(define (item-next-symbol it)
   (unless (item? it) (error "not a item:" it))
   (if (item-final? it)
       (error "cannot get next symbol:" it)
       (rule-term (item-rule it) (item-pos it))))
 
-(define (prev it)
+(define (item-prev-symbol it)
   (unless (item? it) (error "not an item:" it))
   (if (> (item-pos it) 0)
       (rule-term (item-rule it) (- (item-pos it) 1))
@@ -158,12 +165,12 @@
 (define (item-terminal? it)
   (and (item? it)
        (not (item-final? it))
-       (terminal? (next it))))
+       (terminal? (item-next-symbol it))))
 
 (define (item-nonterminal? it)
   (and (item? it)
        (not (item-final? it))
-       (nonterminal? (next it))))
+       (nonterminal? (item-next-symbol it))))
 
 (define (item-append-preds! it preds)
   (item-pred! it (append (item-pred it) preds)))
@@ -187,7 +194,10 @@
   (display (state-id lab) port)
   (display "-> [" port)
   (display-item-t dst port)
-  (display "]"))
+  (display "]" port)
+  (display " <" port)
+  (display (state-id (item-parent dst)))
+  (display ">" port))
 
 (set-record-type-printer!
  item-t
@@ -253,7 +263,7 @@
     (unless (every rule? grammar) (error "bad grammar:" grammar))
     (unless (state? st) (error "bad state:" st))
     (unless (item-nonterminal? it) (error "bad item:" it))
-    (let* ([nxt (next it)]
+    (let* ([nxt (item-next-symbol it)]
            [predicted (map (lambda (r) (item r 0 st '() '()))
                            (filter (lambda (r) (rule-named? r nxt)) grammar))])
       (if (nulling? nxt)
@@ -285,7 +295,7 @@
                                  '())
                              (list (reduction ssp it))))
            (filter (lambda (s) (and (item-nonterminal? s)
-                                    (nonterminal=? (next s) name))) itemsp))))
+                                    (nonterminal=? (item-next-symbol s) name))) itemsp))))
 
   (define (predict/complete st it)
     (cond [(item-nonterminal? it) (predict st it)]
@@ -308,7 +318,7 @@
     ;;
     ;; Append trm to the list for the new item.
     (let* ([matches (filter (lambda (s) (and (item-terminal? s)
-                                             (terminal=? (next s) trm)))
+                                             (terminal=? (item-next-symbol s) trm)))
                             (state-items old))]
            [preds (filter (lambda (i) (> (item-pos i) 0)) matches)]
            [ptrs (map (lambda (p) (predecessor old p)) preds)]
@@ -368,7 +378,8 @@
 
 
 (define-record-type sppf-t
-  (sppf-raw id label start end children families) sppf?
+  (sppf-raw note id label start end children families) sppf?
+  (note sppf-note)
   (id sppf-id)
   (label sppf-label)
   (start sppf-start)
@@ -412,9 +423,9 @@
 
 (define sppf-counter -1)
 
-(define (sppf label start end . children)
+(define (sppf note label start end . children)
   (set! sppf-counter (+ sppf-counter 1))
-  (sppf-raw sppf-counter label start end children '()))
+  (sppf-raw note sppf-counter label start end children '()))
 
 (define (sppf-label=? l1 l2)
   (or (and (nonterminal? l1)
@@ -449,58 +460,58 @@
 (define (find-sppf label start end)
   (find (lambda (node) (sppf-matching? node label start end)) nodes))
 
-(define (find-or-add-sppf! label start end . children)
+(define (find-or-add-sppf! note label start end . children)
   (let ([found (find-sppf label start end)])
     (cond
      [found found]
-     [else  (let ([new (apply sppf (list label start end children))])
+     [else  (let ([new (apply sppf (list note label start end children))])
               (set! nodes (cons new nodes))
               new)])))
 
 (define processed '())
 
 (define (processed? it)
-  (find (lambda (i) (item=? i it)) processed))
+  (memq it processed))
 
 (define (processed! it)
   (set! processed (cons it processed)))
 
 ;; Case 1
-;; If it = (A -> ., j)
-(define (item-case1? it)
-  (rule-empty? (item-rule it)))
+;; If p = (A -> ., j)
+(define (item-case1? p)
+  (rule-empty? (item-rule p)))
 
 ;; If there is no SPPF node v labeled (A,i,i), create one with child node epsilon.
 ;; if u does not have a family (v) then add the family (v) to u.
 (define (item-case1! u it)
   (let* ([A (item-name it)]
          [i (item-parent it)]
-         [node (find-or-add-sppf! A i i '())])
-    (add-family-if-missing! u node)))
+         [v (find-or-add-sppf! "1" A i i '())])
+    (add-family-if-missing! u v)))
 
 ;; Case 2
-;; If it = (A -> a . beta, j) where a terminal
-(define (item-case2? it)
-  (let ([a (prev it)])
+;; If p = (A -> a . beta, j) where a terminal
+(define (item-case2? p)
+  (let ([a (item-prev-symbol p)])
     (and a
-         (= (item-pos it) 1)
+         (= (item-pos p) 1)
          (terminal? a))))
 
 ;; If there is no SPPF node v labeled (a, i-1, i), create one
 ;; if u does not have a family (v) then add the family (v) to u.
-(define (item-case2! u it)
-  (let* ([a (prev it)]
-         [i (item-parent it)]
+(define (item-case2! u p)
+  (let* ([a   (item-prev-symbol p)]
+         [i   (item-parent p)]
          [i-1 (state-prev i)]
-         [node (find-or-add-sppf! a i-1 i)])
-    (add-family-if-missing! u node)))
+         [v   (find-or-add-sppf! "2" a i-1 i)])
+    (add-family-if-missing! u v)))
 
 ;; Case 3
-;; if it = (A -> C . beta, j) where C nonterminal
-(define (item-case3? it)
-  (let ([C (prev it)])
+;; if p = (A -> C . beta, j) where C nonterminal
+(define (item-case3? p)
+  (let ([C (item-prev-symbol p)])
     (and C
-         (= (item-pos it) 1)
+         (= (item-pos p) 1)
          (nonterminal? C))))
 
 ;; If there is no SPPF node v labeled (C, j, i), create one
@@ -508,23 +519,23 @@
 ;; For each reduction pointer from v labeled j:
 ;;   suppose that the pointer points to q
 ;;   if q is not marked as processed, build-tree(v, q)
-(define (item-case3! u it)
-  (let* ([C (prev it)]
-         [j (item-start it)]
-         [i (item-parent it)]
-         [node (find-or-add-sppf! C j i)])
-    (add-family-if-missing! u node)
-    (for-each (lambda (r-ptr) (build-tree node (reduct-dest r-ptr)))
+(define (item-case3! u p)
+  (let* ([C (item-prev-symbol p)]
+         [j (item-start p)]
+         [i (item-parent p)]
+         [v (find-or-add-sppf! "3" C j i)])
+    (add-family-if-missing! u v)
+    (for-each (lambda (r-ptr) (build-tree v (reduct-dest r-ptr)))
               (filter (lambda (r-ptr) (and (state=? (reduct-label r-ptr) j)
                                            (not (processed? (reduct-dest r-ptr)))))
-                      (item-reduct it)))))
+                      (item-reduct p)))))
 
 ;; Case 4
-;; if it = (A -> alpha' a . beta, j) where a terminal, alpha' not empty
-(define (item-case4? it)
-  (let ([a (prev it)])
+;; if p = (A -> alpha' a . beta, j) where a terminal, alpha' not empty
+(define (item-case4? p)
+  (let ([a (item-prev-symbol p)])
     (and a
-         (> (item-pos it) 1)
+         (> (item-pos p) 1)
          (terminal? a))))
 
 ;; If there is no SPPF node v labeled (a, i-1, i) create one
@@ -532,26 +543,26 @@
 ;; for each target p' of a predecessor pointer labeled i-1 from p:
 ;;    if p' is not marked as processed build-tree(w, p')
 ;; if u does not have a family (w,v) add the family (w,v) to u
-(define (item-case4! u it)
-  (let* ([a (prev it)]
-         [A (item-name it)]
-         [i (item-parent it)]
+(define (item-case4! u p)
+  (let* ([a (item-prev-symbol p)]
+         [A (item-name p)]
+         [i (item-parent p)]
          [i-1 (state-prev i)]
-         [j (item-start it)]
-         [v (find-or-add-sppf! a i-1 i)]
-         [w (find-or-add-sppf! (item->label it) j i-1)])
-    (add-family-if-missing! u w v)
+         [j (item-start p)]
+         [v (find-or-add-sppf! "4a" a i-1 i)]
+         [w (find-or-add-sppf! "4b" (item->label p) j i-1)])
+    (add-family-if-missing! u v w)
     (for-each (lambda (p-ptr) (build-tree w (pred-dest p-ptr)))
               (filter (lambda (p-ptr) (and (state=? (pred-label p-ptr) i-1)
                                            (not (processed? (pred-dest p-ptr)))))
-                      (item-pred it)))))
+                      (item-pred p)))))
 
 ;; Case 5
-;; if it = (a -> alpha' C . beta, j) where C nonterminal, alpha' not empty
-(define (item-case5? it)
-  (let ([C (prev it)])
+;; if p = (a -> alpha' C . beta, j) where C nonterminal, alpha' not empty
+(define (item-case5? p)
+  (let ([C (item-prev-symbol p)])
     (and C
-         (> (item-pos it) 1)
+         (> (item-pos p) 1)
          (nonterminal? C))))
 
 ;; for each reduction pointer from p:
@@ -562,40 +573,39 @@
 ;;   for each target p' of a predecessor pointer labeled l from p:
 ;;     if p' is not marked as processed build-tree(w, p')
 ;;   if u does not have a family (w,v) add the family (w,v) to u
-(define (item-case5! u it)
-  (let loop ([r-ptrs (item-reduct it)])
+(define (item-case5! u p)
+  (let loop ([r-ptrs (item-reduct p)])
     (unless (null? r-ptrs)
       (let* ([r-ptr (car r-ptrs)]
              [l (reduct-label r-ptr)]
              [q (reduct-dest r-ptr)]
-             [C (prev it)]
-             [i (item-parent it)]
-             [j (item-start it)]
-             [v (find-or-add-sppf! C l i)]
-             [w (find-or-add-sppf! (item->label it) j l)])
-        (add-family-if-missing! u w v)
-        (unless (processed? q)
-          (build-tree v q))
+             [C (item-prev-symbol p)]
+             [i (item-parent p)]
+             [j (item-start p)]
+             [v (find-or-add-sppf! "5a" C l i)]
+             [w (find-or-add-sppf! "5b" (item->label p) j l)])
+        (add-family-if-missing! u v w)
+        (unless (processed? q) (build-tree v q))
         (for-each (lambda (p-ptr) (build-tree w (pred-dest p-ptr)))
                   (filter (lambda (p-ptr) (and (state=? (pred-label p-ptr) l)
                                                (not (processed? (pred-dest p-ptr)))))
-                          (item-pred it)))
+                          (item-pred p)))
         (loop (cdr r-ptrs))))))
 
 (define (build-tree u p)
-  (processed! p)
   (cond
    [(item-case1? p) (item-case1! u p)]
    [(item-case2? p) (item-case2! u p)]
    [(item-case3? p) (item-case3! u p)]
    [(item-case4? p) (item-case4! u p)]
-   [(item-case5? p) (item-case5! u p)]))
+   [(item-case5? p) (item-case5! u p)])
+  (processed! p))
 
 (define (build-sppf s0 sn)
   (set! sppf-counter -1)
   (set! nodes '())
   (set! processed '())
-  (let ([u0 (sppf GAMMA s0 sn)])
+  (let ([u0 (sppf "GAMMA" GAMMA s0 sn)])
     (for-each (lambda (it) (build-tree u0 it))
               (filter (lambda (it) (and (item-final? it)
                                         (nonterminal=? (item-name it) GAMMA)
@@ -609,10 +619,13 @@
   (simple-format #f "sppf~A" (sppf-id sppf)))
 
 (define (sppf->dot-node n)
-  (simple-format #f "~A [label=\"~A\\n~A\"];\n"
+  (simple-format #f "~A [label=\"~A\\n~A ~A ~A (~A)\"];\n"
                  (sppf->node-name n)
                  (sppf-id n)
-                 (sppf-label n)))
+                 (sppf-label n)
+                 (state-id (sppf-start n))
+                 (state-id (sppf-end n))
+                 (sppf-note n)))
 
 (define sppf-family->dot
   (let ([i -1])
@@ -686,33 +699,3 @@
                  (rule "S" '(b))))
 
 (define ss1 (parse ss "S" '(b b b)))
-
-;; (define q (parse aexp "EXPR" '(a + a)))
-
-;; (define* (find-item state symbol #:key (completed #f) (starting-at 0))
-;;   (let ([pred (lambda (item)
-;;                 (and (item-named? item symbol)
-;;                      (if completed (item-final? item) #t)
-;;                      (equal? (state-id (item-start item)) starting-at)))])
-;;     (filter pred (state-items state))))
-
-;; (define (find-item pred state)
-;;   (filter pred (state-items state)))
-
-;; (define (item-name-p symbol)
-;;   (lambda (it) (item-named? it symbol)))
-
-;; (define (completed-p)
-;;   (lambda (it) (item-final? it)))
-
-;; (define (starting-at-p id)
-;;   (lambda (it) (= (state-id (item-start it)) id)))
-
-;; (define (and-p . preds)
-;;   (lambda (it)
-;;     (let loop ([p preds])
-;;       (if (null? p)
-;;           #t
-;;           (if ((car p) it)
-;;               (loop (cdr p))
-;;               #f)))))
