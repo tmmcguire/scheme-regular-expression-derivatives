@@ -46,17 +46,11 @@
   (previous state-prev)
   (item-set state-items state-items!))
 
-;;; SPPF predecessor pointers
-(define-record-type predecessor-t
-  (predecessor label dest) predecessor?
-  (label pred-label)
-  (dest pred-dest))
-
-;;; SPPF reduction pointers
-(define-record-type reduction-t
-  (reduction label dest) reduction?
-  (label reduct-label)
-  (dest reduct-dest))
+;;; SPPF predecessor/reduction pointers
+(define-record-type backpointer-t
+  (backpointer label dest) backpointer?
+  (label ptr-label)
+  (dest ptr-dest))
 
 ;;; --------------------------
 
@@ -128,8 +122,8 @@
   (unless (and (rule? rule)
                (number? pos)
                (state? start)
-               (every predecessor? pred)
-               (every reduction? reduct))
+               (every backpointer? pred)
+               (every backpointer? reduct))
     (error "bad item:" rule pos start pred reduct))
   (item-raw rule pos start #f pred reduct))
 
@@ -180,24 +174,18 @@
 
 (define (display-item-t rec port)
   (let ([terms (rule-production (item-rule rec))])
-    (display (item-name rec) port)
-    (display " -> " port)
-    (display (insert (item-pos rec) "⚫" terms) port)
-    (display " (" port)
-    (display (state-id (item-start rec)) port)
-    (display ")" port) ))
+    (simple-format port "~A -> ~A (~A)"
+                   (item-name rec)
+                   (insert (item-pos rec) "⚫" terms)
+                   (state-id (item-start rec)))))
 
 (define (display-ptr type lab dst port)
-  (display " -" port)
-  (display type port)
-  (display "-" port)
-  (display (state-id lab) port)
-  (display "-> [" port)
+  (simple-format port " -~A-~A-> ["
+                 type
+                 (state-id lab))
   (display-item-t dst port)
-  (display "]" port)
-  (display " <" port)
-  (display (state-id (item-parent dst)))
-  (display ">" port))
+  (simple-format port "] <~A>"
+                 (state-id (item-parent dst))))
 
 (set-record-type-printer!
  item-t
@@ -205,8 +193,8 @@
    (let ([preds (item-pred rec)]
          [reducts (item-reduct rec)])
      (display-item-t rec port)
-     (map (lambda (r) (display-ptr "p" (pred-label r) (pred-dest r) port)) preds)
-     (map (lambda (r) (display-ptr "r" (reduct-label r) (reduct-dest r) port)) reducts))))
+     (map (lambda (r) (display-ptr "p" (ptr-label r) (ptr-dest r) port)) preds)
+     (map (lambda (r) (display-ptr "r" (ptr-label r) (ptr-dest r) port)) reducts))))
 
 ;;; --------------------------
 
@@ -235,14 +223,10 @@
 (set-record-type-printer!
   state-t
   (lambda (rec port)
-    (display "--- " port)
-    (display (state-id rec) port)
-    (display " ---" port)
-    (newline port)
+    (simple-format port "--- ~A ---\n" (state-id rec))
     (let loop ([items (state-items rec)])
       (unless (null? items)
-        (display (car items) port)
-        (newline port)
+        (simple-format port "~A\n" (car items))
         (loop (cdr items))))))
 
 ;;; --------------------------
@@ -291,9 +275,9 @@
                              (+ (item-pos s) 1)
                              (item-start s)
                              (if (> (item-pos s) 0)
-                                 (list (predecessor ssp s))
+                                 (list (backpointer ssp s))
                                  '())
-                             (list (reduction ssp it))))
+                             (list (backpointer ssp it))))
            (filter (lambda (s) (and (item-nonterminal? s)
                                     (nonterminal=? (item-next-symbol s) name))) itemsp))))
 
@@ -321,7 +305,7 @@
                                              (terminal=? (item-next-symbol s) trm)))
                             (state-items old))]
            [preds (filter (lambda (i) (> (item-pos i) 0)) matches)]
-           [ptrs (map (lambda (p) (predecessor old p)) preds)]
+           [ptrs (map (lambda (p) (backpointer old p)) preds)]
            [new (state old)])
       (for-each (lambda (s) (expand! new (item (item-rule s)
                                                (+ (item-pos s) 1)
@@ -376,7 +360,6 @@
 ;;; Add a reduction pointer labeled k from p to t and,
 ;;; if rho /= epsilon, a predecessor pointer labeled k from p to q.
 
-
 (define-record-type sppf-t
   (sppf-raw note id label start end children families) sppf?
   (note sppf-note)
@@ -404,26 +387,20 @@
           [name  (rule-name rule)]
           [terms (rule-production rule)]
           [pos   (item-label-pos rec)])
-     (display name port)
-     (display " -> " port)
-     (display (insert pos "⚫" terms) port))))
+     (simple-format port "~A -> ~A" name (insert pos "⚫" terms)))))
 
 (set-record-type-printer!
  sppf-t
  (lambda (rec port)
-   (display "SPPF-" port)
-   (display (sppf-id rec) port)
-   (display " " port)
-   (display (sppf-label rec) port)
-   (display " children: " port)
-   (display (sppf-children rec) port)
-   (display " families: " port)
-   (display (sppf-families rec) port)
-   ))
+   (simple-format port "SPPF-~A ~A children: ~A families: ~A"
+                  (sppf-id rec)
+                  (sppf-label rec)
+                  (sppf-children rec)
+                  (sppf-families rec))))
 
 (define sppf-counter -1)
 
-(define (sppf note label start end . children)
+(define (sppf note label start end children)
   (set! sppf-counter (+ sppf-counter 1))
   (sppf-raw note sppf-counter label start end children '()))
 
@@ -444,6 +421,8 @@
        (state=? (sppf-start l) start)
        (state=? (sppf-end l) end)))
 
+;;; --------------------------
+
 (define (family=? f1 f2)
   (and (= (length f1) (length f2))
        (every sppf=? f1 f2)))
@@ -454,6 +433,8 @@
 (define (add-family-if-missing! u . v)
   (let ([family (find-family u v)])
     (unless family (sppf-families! u (append (sppf-families u) (list v))))))
+
+;;; --------------------------
 
 (define nodes '())
 
@@ -468,6 +449,8 @@
               (set! nodes (cons new nodes))
               new)])))
 
+;;; --------------------------
+
 (define processed '())
 
 (define (processed? it)
@@ -476,123 +459,128 @@
 (define (processed! it)
   (set! processed (cons it processed)))
 
-;; Case 1
-;; If p = (A -> ., j)
-(define (item-case1? p)
-  (rule-empty? (item-rule p)))
-
-;; If there is no SPPF node v labeled (A,i,i), create one with child node epsilon.
-;; if u does not have a family (v) then add the family (v) to u.
-(define (item-case1! u it)
-  (let* ([A (item-name it)]
-         [i (item-parent it)]
-         [v (find-or-add-sppf! "1" A i i '())])
-    (add-family-if-missing! u v)))
-
-;; Case 2
-;; If p = (A -> a . beta, j) where a terminal
-(define (item-case2? p)
-  (let ([a (item-prev-symbol p)])
-    (and a
-         (= (item-pos p) 1)
-         (terminal? a))))
-
-;; If there is no SPPF node v labeled (a, i-1, i), create one
-;; if u does not have a family (v) then add the family (v) to u.
-(define (item-case2! u p)
-  (let* ([a   (item-prev-symbol p)]
-         [i   (item-parent p)]
-         [i-1 (state-prev i)]
-         [v   (find-or-add-sppf! "2" a i-1 i)])
-    (add-family-if-missing! u v)))
-
-;; Case 3
-;; if p = (A -> C . beta, j) where C nonterminal
-(define (item-case3? p)
-  (let ([C (item-prev-symbol p)])
-    (and C
-         (= (item-pos p) 1)
-         (nonterminal? C))))
-
-;; If there is no SPPF node v labeled (C, j, i), create one
-;; if u does not have a family (v), then add the family (v) to u.
-;; For each reduction pointer from v labeled j:
-;;   suppose that the pointer points to q
-;;   if q is not marked as processed, build-tree(v, q)
-(define (item-case3! u p)
-  (let* ([C (item-prev-symbol p)]
-         [j (item-start p)]
-         [i (item-parent p)]
-         [v (find-or-add-sppf! "3" C j i)])
-    (add-family-if-missing! u v)
-    (for-each (lambda (r-ptr) (build-tree v (reduct-dest r-ptr)))
-              (filter (lambda (r-ptr) (and (state=? (reduct-label r-ptr) j)
-                                           (not (processed? (reduct-dest r-ptr)))))
-                      (item-reduct p)))))
-
-;; Case 4
-;; if p = (A -> alpha' a . beta, j) where a terminal, alpha' not empty
-(define (item-case4? p)
-  (let ([a (item-prev-symbol p)])
-    (and a
-         (> (item-pos p) 1)
-         (terminal? a))))
-
-;; If there is no SPPF node v labeled (a, i-1, i) create one
-;; If there is no SPPF node w labeled (A -> alpha' . a beta, j, i-1) create one
-;; for each target p' of a predecessor pointer labeled i-1 from p:
-;;    if p' is not marked as processed build-tree(w, p')
-;; if u does not have a family (w,v) add the family (w,v) to u
-(define (item-case4! u p)
-  (let* ([a (item-prev-symbol p)]
-         [A (item-name p)]
-         [i (item-parent p)]
-         [i-1 (state-prev i)]
-         [j (item-start p)]
-         [v (find-or-add-sppf! "4a" a i-1 i)]
-         [w (find-or-add-sppf! "4b" (item->label p) j i-1)])
-    (add-family-if-missing! u v w)
-    (for-each (lambda (p-ptr) (build-tree w (pred-dest p-ptr)))
-              (filter (lambda (p-ptr) (and (state=? (pred-label p-ptr) i-1)
-                                           (not (processed? (pred-dest p-ptr)))))
-                      (item-pred p)))))
-
-;; Case 5
-;; if p = (a -> alpha' C . beta, j) where C nonterminal, alpha' not empty
-(define (item-case5? p)
-  (let ([C (item-prev-symbol p)])
-    (and C
-         (> (item-pos p) 1)
-         (nonterminal? C))))
-
-;; for each reduction pointer from p:
-;;   suppose that the pointer is labeled l and points to q
-;;   if there is no SPPF node v labeled (C, l, i) create one
-;;   if q is not marked as processed build-tree(v, q)
-;;   if there is no SPPF node w labeled (A -> alpha' . C beta, j, l) create one
-;;   for each target p' of a predecessor pointer labeled l from p:
-;;     if p' is not marked as processed build-tree(w, p')
-;;   if u does not have a family (w,v) add the family (w,v) to u
-(define (item-case5! u p)
-  (let loop ([r-ptrs (item-reduct p)])
-    (unless (null? r-ptrs)
-      (let* ([r-ptr (car r-ptrs)]
-             [l (reduct-label r-ptr)]
-             [q (reduct-dest r-ptr)]
-             [C (item-prev-symbol p)]
-             [i (item-parent p)]
-             [j (item-start p)]
-             [v (find-or-add-sppf! "5a" C l i)]
-             [w (find-or-add-sppf! "5b" (item->label p) j l)])
-        (add-family-if-missing! u v w)
-        (unless (processed? q) (build-tree v q))
-        (for-each (lambda (p-ptr) (build-tree w (pred-dest p-ptr)))
-                  (filter (lambda (p-ptr) (and (state=? (pred-label p-ptr) l)
-                                               (not (processed? (pred-dest p-ptr)))))
-                          (item-pred p)))
-        (loop (cdr r-ptrs))))))
+;;; --------------------------
 
 (define (build-tree u p)
+
+  ;; Case 1
+  ;; If p = (A -> ., j)
+  (define (item-case1? p)
+    (rule-empty? (item-rule p)))
+
+  ;; If there is no SPPF node v labeled (A,i,i), create one with child node epsilon.
+  ;; if u does not have a family (v) then add the family (v) to u.
+  (define (item-case1! u it)
+    (let* ([A (item-name it)]
+           [i (item-parent it)]
+           [v (find-or-add-sppf! "1" A i i '())])
+      (add-family-if-missing! u v)))
+
+  ;; Case 2
+  ;; If p = (A -> a . beta, j) where a terminal
+  (define (item-case2? p)
+    (let ([a (item-prev-symbol p)])
+      (and a
+           (= (item-pos p) 1)
+           (terminal? a))))
+
+  ;; If there is no SPPF node v labeled (a, i-1, i), create one
+  ;; if u does not have a family (v) then add the family (v) to u.
+  (define (item-case2! u p)
+    (let* ([a   (item-prev-symbol p)]
+           [i   (item-parent p)]
+           [i-1 (state-prev i)]
+           [v   (find-or-add-sppf! "2" a i-1 i)])
+      (add-family-if-missing! u v)))
+
+  ;; Case 3
+  ;; if p = (A -> C . beta, j) where C nonterminal
+  (define (item-case3? p)
+    (let ([C (item-prev-symbol p)])
+      (and C
+           (= (item-pos p) 1)
+           (nonterminal? C))))
+
+  ;; If there is no SPPF node v labeled (C, j, i), create one
+  ;; if u does not have a family (v), then add the family (v) to u.
+  ;; For each reduction pointer from v labeled j:
+  ;;   suppose that the pointer points to q
+  ;;   if q is not marked as processed, build-tree(v, q)
+  (define (item-case3! u p)
+    (let* ([C (item-prev-symbol p)]
+           [j (item-start p)]
+           [i (item-parent p)]
+           [v (find-or-add-sppf! "3" C j i)])
+      (add-family-if-missing! u v)
+      (for-each (lambda (r-ptr) (build-tree v (ptr-dest r-ptr)))
+                (filter (lambda (r-ptr) (and (state=? (ptr-label r-ptr) j)
+                                             (not (processed? (ptr-dest r-ptr)))))
+                        (item-reduct p)))))
+
+  ;; Case 4
+  ;; if p = (A -> alpha' a . beta, j) where a terminal, alpha' not empty
+  (define (item-case4? p)
+    (let ([a (item-prev-symbol p)])
+      (and a
+           (> (item-pos p) 1)
+           (terminal? a))))
+
+  ;; If there is no SPPF node v labeled (a, i-1, i) create one
+  ;; If there is no SPPF node w labeled (A -> alpha' . a beta, j, i-1) create one
+  ;; for each target p' of a predecessor pointer labeled i-1 from p:
+  ;;    if p' is not marked as processed build-tree(w, p')
+  ;; if u does not have a family (w,v) add the family (w,v) to u
+  (define (item-case4! u p)
+    (let* ([a (item-prev-symbol p)]
+           [A (item-name p)]
+           [i (item-parent p)]
+           [i-1 (state-prev i)]
+           [j (item-start p)]
+           [v (find-or-add-sppf! "4a" a i-1 i)]
+           [w (find-or-add-sppf! "4b" (item->label p) j i-1)])
+      (add-family-if-missing! u v w)
+      (for-each (lambda (p-ptr) (build-tree w (ptr-dest p-ptr)))
+                (filter (lambda (p-ptr) (and (state=? (ptr-label p-ptr) i-1)
+                                             (not (processed? (ptr-dest p-ptr)))))
+                        (item-pred p)))))
+
+  ;; Case 5
+  ;; if p = (a -> alpha' C . beta, j) where C nonterminal, alpha' not empty
+  (define (item-case5? p)
+    (let ([C (item-prev-symbol p)])
+      (and C
+           (> (item-pos p) 1)
+           (nonterminal? C))))
+
+  ;; for each reduction pointer from p:
+  ;;   suppose that the pointer is labeled l and points to q
+  ;;   if there is no SPPF node v labeled (C, l, i) create one
+  ;;   if q is not marked as processed build-tree(v, q)
+  ;;   if there is no SPPF node w labeled (A -> alpha' . C beta, j, l) create one
+  ;;   for each target p' of a predecessor pointer labeled l from p:
+  ;;     if p' is not marked as processed build-tree(w, p')
+  ;;   if u does not have a family (w,v) add the family (w,v) to u
+  (define (item-case5! u p)
+    (let loop ([r-ptrs (item-reduct p)])
+      (unless (null? r-ptrs)
+        (let* ([r-ptr (car r-ptrs)]
+               [l (ptr-label r-ptr)]
+               [q (ptr-dest r-ptr)]
+               [C (item-prev-symbol p)]
+               [i (item-parent p)]
+               [j (item-start p)]
+               [v (find-or-add-sppf! "5a" C l i)]
+               [w (find-or-add-sppf! "5b" (item->label p) j l)])
+          (add-family-if-missing! u v w)
+          (unless (processed? q) (build-tree v q))
+          (for-each (lambda (p-ptr) (build-tree w (ptr-dest p-ptr)))
+                    (filter (lambda (p-ptr) (and (state=? (ptr-label p-ptr) l)
+                                                 (not (processed? (ptr-dest p-ptr)))))
+                            (item-pred p)))
+          (loop (cdr r-ptrs))))))
+
+  ;; Note: processed! moved to end, which seems to collect all of the
+  ;; disconnected nodes.
   (cond
    [(item-case1? p) (item-case1! u p)]
    [(item-case2? p) (item-case2! u p)]
@@ -601,54 +589,57 @@
    [(item-case5? p) (item-case5! u p)])
   (processed! p))
 
-(define (build-sppf s0 sn)
+(define (build-sppf states)
   (set! sppf-counter -1)
   (set! nodes '())
   (set! processed '())
-  (let ([u0 (sppf "GAMMA" GAMMA s0 sn)])
+  (let* ([s0 (car states)]
+         [sn (last states)]
+         [u0 (find-or-add-sppf! "GAMMA" GAMMA s0 sn)])
     (for-each (lambda (it) (build-tree u0 it))
               (filter (lambda (it) (and (item-final? it)
                                         (nonterminal=? (item-name it) GAMMA)
                                         (state=? (item-start it) s0)))
                       (state-items sn)))
-    u0))
+    nodes))
 
 ;;; --------------------------
 
-(define (sppf->node-name sppf)
-  (simple-format #f "sppf~A" (sppf-id sppf)))
+(define (sppf->dot nodes)
 
-(define (sppf->dot-node n)
-  (simple-format #f "~A [label=\"~A\\n~A ~A ~A (~A)\"];\n"
-                 (sppf->node-name n)
-                 (sppf-id n)
-                 (sppf-label n)
-                 (state-id (sppf-start n))
-                 (state-id (sppf-end n))
-                 (sppf-note n)))
+  (define (sppf->node-name sppf)
+    (simple-format #f "sppf~A" (sppf-id sppf)))
 
-(define sppf-family->dot
-  (let ([i -1])
-    (lambda (origin family)
-      (cond
-       [(> (length family) 1)
-        (set! i (+ i 1))
-        (simple-format #f "~A -> xx~A;\nxx~A -> ~A;\nxx~A -> ~A;\n"
-                       (sppf->node-name origin)
-                       i
-                       i
-                       (sppf->node-name (car family))
-                       i
-                       (sppf->node-name (cadr family)))]
-       [(= (length family) 1)
-        (simple-format #f "~A -> ~A;\n"
-                       (sppf->node-name origin)
-                       (sppf->node-name (car family)))]))))
+  (define (sppf->dot-node n)
+    (simple-format #f "~A [label=\"~A\\n~A ~A ~A (~A)\"];\n"
+                   (sppf->node-name n)
+                   (sppf-id n)
+                   (sppf-label n)
+                   (state-id (sppf-start n))
+                   (state-id (sppf-end n))
+                   (sppf-note n)))
 
-(define (sppf->dot-edges node)
-  (map (lambda (f) (sppf-family->dot node f)) (sppf-families node)))
+  (define sppf-family->dot
+    (let ([i -1])
+      (lambda (origin family)
+        (cond
+         [(> (length family) 1)
+          (set! i (+ i 1))
+          (simple-format #f "~A -> xx~A;\nxx~A -> ~A;\nxx~A -> ~A;\n"
+                         (sppf->node-name origin)
+                         i
+                         i
+                         (sppf->node-name (car family))
+                         i
+                         (sppf->node-name (cadr family)))]
+         [(= (length family) 1)
+          (simple-format #f "~A -> ~A;\n"
+                         (sppf->node-name origin)
+                         (sppf->node-name (car family)))]))))
 
-(define (sppf->dot)
+  (define (sppf->dot-edges node)
+    (map (lambda (f) (sppf-family->dot node f)) (sppf-families node)))
+
   (let ([n (map sppf->dot-node nodes)]
         [e (concatenate (map sppf->dot-edges nodes))])
     (display "digraph test {\n")
@@ -656,6 +647,11 @@
     (for-each display n)
     (for-each display e)
     (display "}\n")))
+
+(define (sppf->dot-file nodes filename)
+  (with-output-to-file filename
+    (lambda ()
+      (sppf->dot nodes))))
 
 ;;; --------------------------
 
