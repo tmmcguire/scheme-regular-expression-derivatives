@@ -55,7 +55,7 @@
 ;;; --------------------------
 
 (define (rule name production)
-  (unless (and (string? name)
+  (unless (and (nonterminal? name)
                (list? production)
                (every (lambda (t) (or (terminal? t) (nonterminal? t)))
                       production))
@@ -70,8 +70,8 @@
 
 (define (rule-named? r str)
   (unless (rule? r) (error "not a rule:" r))
-  (unless (string? str) (error "bad rule-name:" str))
-  (string=? (rule-name r) str))
+  (unless (nonterminal? str) (error "bad rule-name:" str))
+  (nonterminal=? (rule-name r) str))
 
 (define (rule-empty? r)
   (unless (rule? r) (error "not a rule:" r))
@@ -316,7 +316,7 @@
       new))
 
   (unless (and (every rule? grammar)
-               (string? start-symbol))
+               (nonterminal? start-symbol))
     (error "bad grammar:" grammar start-symbol))
   (unless (every terminal? input) "bad input:" input)
   (set! state-ctr -1)
